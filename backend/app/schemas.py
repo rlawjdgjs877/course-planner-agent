@@ -4,7 +4,9 @@
 backend/app/data/courses.json 은 Course 의 목록이다.
 """
 
-from pydantic import BaseModel, Field
+from typing import Literal
+
+from pydantic import BaseModel, Field, model_validator
 
 
 class Meeting(BaseModel):
@@ -45,3 +47,102 @@ class Course(BaseModel):
     room: str | None = Field(default=None, description="호실번호")
     capacity: int | None = Field(default=None, description="수강정원")
     enrolled: int | None = Field(default=None, description="수강신청 인원")
+
+
+class CourseList(BaseModel):
+    sample: bool = Field(description="가짜 샘플 데이터인지 (실제 courses.json 이 아직 없을 때 True)")
+    courses: list[Course]
+
+
+class TimeBlock(BaseModel):
+    """수업을 넣으면 안 되는 시간대. 예: 금요일 전체, 매일 09:00~10:00"""
+
+    day: str | None = Field(default=None, description="요일 한 글자. 비우면 모든 요일")
+    start: str = Field(default="00:00", description="시작 시각 HH:MM")
+    end: str = Field(default="24:00", description="종료 시각 HH:MM")
+
+
+class TimetableRequest(BaseModel):
+    """시간표 생성 조건. 사용자의 말을 AI가 이 형식으로 바꿔서 넘긴다."""
+
+    min_credits: float = Field(description="이번 학기 최소 학점")
+    max_credits: float = Field(description="이번 학기 최대 학점")
+
+    # 반드시 지켜야 하는 조건
+    must_include: list[str] = Field(
+        default_factory=list, description="꼭 넣을 과목 (교과목코드 또는 교과목명)"
+    )
+    exclude: list[str] = Field(
+        default_factory=list, description="넣지 않을 과목 (교과목코드 또는 교과목명)"
+    )
+    completed: list[str] = Field(
+        default_factory=list, description="이미 이수한 과목 (교과목코드 또는 교과목명)"
+    )
+    blocked_times: list[TimeBlock] = Field(
+        default_factory=list, description="수업을 넣으면 안 되는 시간대"
+    )
+    required_credits: dict[str, float] = Field(
+        default_factory=dict,
+        description="교과구분별로 이번 학기에 채울 최소 학점. 예: {'전공필수': 6}",
+    )
+    exclude_full: bool = Field(default=False, description="정원이 찬 강좌를 제외할지")
+
+    # 가능하면 반영하는 선호 (점수에만 영향)
+    preferred_free_days: list[str] = Field(
+        default_factory=list, description="공강이면 좋은 요일"
+    )
+
+    prefer_courses: list[str] = Field(
+        default_factory=list,
+        description="가능하면 유지할 강좌번호. 채팅으로 고칠 때 지금 시간표와 비슷한 결과를 내는 데 쓴다",
+    )
+
+    max_results: int = Field(default=5, ge=1, le=20, description="돌려줄 시간표 개수")
+
+    @model_validator(mode="after")
+    def _check_credit_range(self) -> "TimetableRequest":
+        if self.min_credits > self.max_credits:
+            raise ValueError("min_credits 는 max_credits 보다 클 수 없습니다")
+        return self
+
+
+class Timetable(BaseModel):
+    """만들어진 시간표 하나."""
+
+    courses: list[Course]
+    total_credits: float
+    credits_by_category: dict[str, float] = Field(description="교과구분별 학점 합")
+    free_days: list[str] = Field(description="월~금 중 수업이 없는 요일")
+    gap_minutes: int = Field(description="수업 사이 빈 시간의 합 (분)")
+    score: float = Field(description="높을수록 선호에 잘 맞는다")
+
+
+class TimetableResult(BaseModel):
+    timetables: list[Timetable] = Field(description="점수가 높은 순")
+    message: str | None = Field(default=None, description="시간표가 없을 때의 이유와 제안")
+    truncated: bool = Field(
+        default=False, description="경우의 수가 너무 많아 일부만 탐색했는지"
+    )
+
+
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(max_length=2000)
+
+
+class ChatRequest(BaseModel):
+    """시간표 화면의 채팅 한 번. 예: '세계의 문화 추가해줘', '운영체제 빼줘'"""
+
+    message: str = Field(min_length=1, max_length=500, description="사용자가 입력한 말")
+    request: TimetableRequest = Field(description="지금 적용된 조건")
+    history: list[ChatMessage] = Field(default_factory=list, description="이전 대화 (최근 것만)")
+    current_course_ids: list[str] = Field(
+        default_factory=list, description="지금 화면에 보이는 시간표의 강좌번호"
+    )
+
+
+class ChatResponse(BaseModel):
+    reply: str = Field(description="채팅창에 보여 줄 답")
+    applied: bool = Field(description="조건이 바뀌어 시간표를 다시 만들었는지")
+    request: TimetableRequest = Field(description="적용된 조건 (바뀌지 않았으면 보낸 그대로)")
+    result: TimetableResult | None = Field(default=None, description="다시 만든 시간표")

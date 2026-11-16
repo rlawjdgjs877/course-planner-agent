@@ -60,7 +60,7 @@ pip install -r requirements.txt
 
 ### 4. 환경변수 파일 만들기
 
-`.env.example`을 복사해 `.env`를 만들고 `OPENAI_API_KEY=` 뒤에 키를 넣습니다.
+`.env.example`을 복사해 `.env`를 만들고 `OPENAI_API_KEY=` 뒤에 키를, `OPENAI_MODEL=` 뒤에 사용할 모델 이름을 넣습니다. 채팅 기능에만 필요하고, 없어도 시간표 만들기는 동작합니다.
 
 Windows (PowerShell):
 
@@ -84,10 +84,66 @@ uvicorn app.main:app --reload
 
 ### 6. 확인
 
+- 시간표 화면: http://localhost:8000
 - API 문서: http://localhost:8000/docs
 - 상태 확인: http://localhost:8000/health → `{"status": "ok"}`
 
 서버를 끄려면 터미널에서 `Ctrl + C`를 누릅니다.
+
+## API
+
+| 주소 | 설명 |
+|---|---|
+| `GET /` | 시연용 화면 (`backend/app/static/index.html`). 조건을 고르면 시간표 화면으로 넘어가고, 그 아래 채팅으로 고칠 수 있음 |
+| `POST /chat` | 말로 시간표 고치기. 예: "세계의 문화 추가해줘", "운영체제 빼줘". OpenAI 키 필요 |
+| `GET /health` | 서버 상태 확인 |
+| `GET /courses` | 이번 학기 개설 강좌 전체. `sample`이 `true`이면 가짜 샘플 데이터 |
+| `POST /timetables` | 조건에 맞고 시간이 겹치지 않는 시간표를 점수순으로 반환 |
+
+### POST /timetables
+
+AI를 쓰지 않는 계산이라, 돌려주는 시간표는 항상 시간 충돌이 없고 학점 조건을 지킵니다. http://localhost:8000/docs 에서 바로 실행해 볼 수 있습니다.
+
+요청 예시:
+
+```json
+{
+  "min_credits": 12,
+  "max_credits": 15,
+  "must_include": ["SAMP0201"],
+  "completed": [],
+  "exclude": [],
+  "blocked_times": [{ "start": "09:00", "end": "10:00" }, { "day": "수", "start": "13:00", "end": "18:00" }],
+  "required_credits": { "전공필수": 3 },
+  "preferred_free_days": ["금"],
+  "max_results": 3
+}
+```
+
+| 항목 | 의미 |
+|---|---|
+| `min_credits`, `max_credits` | 이번 학기 학점 범위 (필수) |
+| `must_include` | 꼭 넣을 과목. 교과목코드 또는 교과목명 |
+| `completed`, `exclude` | 이미 이수한 과목, 넣지 않을 과목 |
+| `blocked_times` | 수업을 넣으면 안 되는 시간. `day`를 비우면 모든 요일 |
+| `required_credits` | 교과구분별로 이번 학기에 채울 최소 학점 |
+| `exclude_full` | 정원이 찬 강좌 제외 여부 |
+| `preferred_free_days` | 공강이면 좋은 요일. 반드시 지켜지지는 않고 점수에 반영 |
+
+응답의 `timetables`는 점수가 높은 순입니다. 조건을 만족하는 시간표가 없으면 `timetables`가 비고 `message`에 이유가 담깁니다. `truncated`가 `true`이면 경우의 수가 많아 전부 따져 보지는 못했다는 뜻입니다 (결과는 여전히 모두 유효합니다).
+
+`app/data/courses.json`이 없으면 가짜 샘플 데이터(`courses.sample.json`)로 동작합니다.
+
+### POST /chat
+
+AI는 사용자의 말을 이해해 **조건만** 고치고, 시간표는 `POST /timetables`와 같은 코드가 다시 만듭니다. 그래서 채팅으로 바꿔도 시간이 겹치거나 개설되지 않은 과목이 들어가지 않습니다.
+
+1. 화면이 지금 조건(`request`), 보고 있는 시간표의 강좌번호(`current_course_ids`), 사용자의 말(`message`)을 보냅니다.
+2. AI가 고친 조건을 돌려줍니다. 개설 강좌에 없는 과목이나 형식이 틀린 시간은 버립니다.
+3. 고친 조건으로 시간표를 다시 만듭니다. 지금 시간표의 과목은 가능하면 유지합니다.
+4. 조건에 맞는 시간표가 없으면 적용하지 않고 이유를 답합니다.
+
+`backend/.env`에 `OPENAI_API_KEY`와 `OPENAI_MODEL`이 둘 다 있어야 동작합니다. 없으면 503과 함께 안내 문구를 돌려줍니다. 관련 코드는 `backend/app/agent/chat.py`에 있습니다.
 
 ## 과목 데이터 만들기 (데이터 담당)
 
