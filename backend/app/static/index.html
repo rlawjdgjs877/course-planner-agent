@@ -3,327 +3,352 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>수강 계획서</title>
+<title>수강 계획</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&family=Nanum+Myeongjo:wght@700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-  /* 학교에 내는 서류 양식과, 형광펜으로 칠한 시간표를 본떴다. */
+  /* 학교 포털 화면의 색과 배치를 따랐다: 회색 바탕, 흰 카드, 금색 메뉴, 회갈색 탭. */
   :root {
-    --desk: #dfe4ec;      /* 책상 */
-    --sheet: #fdfdfb;     /* 종이 */
-    --ink: #1b2440;       /* 펜 잉크 */
-    --faint: #5a6480;     /* 흐린 잉크 */
-    --rule: #8891a8;      /* 양식 선 */
-    --rule-light: #cfd5e1;
-    --label: #edf0f6;     /* 항목 칸 음영 */
-    --marker: #ffe566;    /* 형광펜 */
-    --stamp: #c8321e;     /* 도장 */
+    --bg: #f1f3f6;
+    --card: #ffffff;
+    --border: #e1e4ea;
+    --text: #222222;
+    --muted: #6d7380;
+    --gold: #d79f2f;
+    --gold-deep: #b9851c;
+    --taupe: #8a7668;
+    --tan: #d9b27c;
+    --tab-off: #e3e3e3;
+    --line: #333333;
     --hour: 56px;
   }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
   body {
     margin: 0;
-    background: var(--desk);
-    color: var(--ink);
-    font-family: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
     font-size: 15px;
     line-height: 1.55;
-    word-break: keep-all;  /* 한글이 낱말 중간에서 끊기지 않게 */
+    word-break: keep-all;
   }
   h1, h2, p, ul { margin: 0; }
   ul { padding: 0; list-style: none; }
   button, input, select { font: inherit; color: inherit; }
   button { cursor: pointer; }
-  :focus-visible { outline: 3px solid var(--stamp); outline-offset: 2px; }
+  :focus-visible { outline: 3px solid #2b5fd9; outline-offset: 2px; }
   [hidden] { display: none !important; }
 
-  .desk { padding: 32px 16px 72px; }
-  .sheet {
-    background: var(--sheet); margin: 0 auto; padding: 44px 40px 40px;
-    box-shadow: 0 1px 0 #c3cad6, 0 14px 28px -18px rgba(27, 36, 64, 0.45);
+  .shell { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 26px; max-width: 1480px; margin: 0 auto; padding: 22px 24px 64px; align-items: start; }
+
+  /* 왼쪽 메뉴: 흰 줄은 단계, 금색 줄은 이 화면의 항목 */
+  .side { position: sticky; top: 22px; }
+  .steps a {
+    display: flex; justify-content: space-between; align-items: center;
+    background: var(--card); border-bottom: 1px solid var(--border); padding: 11px 14px;
+    color: var(--text); text-decoration: none; font-size: 16px;
   }
-  .sheet.form-size { max-width: 760px; }
-  .sheet.table-size { max-width: 1040px; }
-  @media (max-width: 640px) {
-    .desk { padding: 0 0 48px; }
-    .sheet { padding: 28px 16px 28px; box-shadow: none; }
+  .steps a[aria-current="page"] { font-weight: 700; box-shadow: inset 4px 0 0 var(--gold); }
+  .steps a.off { color: #a3a8b3; cursor: default; }
+  .steps a span { color: var(--muted); font-size: 13px; font-weight: 400; }
+  .steps li { display: flex; background: var(--card); border-bottom: 1px solid var(--border); }
+  .steps li a { flex: 1; border-bottom: 0; gap: 10px; }
+  .reset { flex: none; border: 0; border-left: 1px solid var(--border); background: #fff; color: var(--taupe); font-size: 13.5px; padding: 0 12px; text-decoration: underline; }
+  .reset.sure { background: #fdecea; color: #8f2318; font-weight: 700; text-decoration: none; }
+  /* 금색 줄: 왼쪽은 항목 이름, 오른쪽은 지금 적은 값 */
+  .sections button {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+    width: 100%; text-align: left; border: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.4);
+    background: var(--gold); color: #fff; font-weight: 700; font-size: 16px; padding: 12px 14px;
+  }
+  .sections button:hover { background: var(--gold-deep); }
+  .sections button span { flex: none; }
+  .sections button em { font-style: normal; font-weight: 500; font-size: 13.5px; text-align: right; color: #3a2a05; }
+  .sections button em.empty { font-weight: 400; color: #fff; opacity: 0.85; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 24px 26px; }
+  .card + .card { margin-top: 22px; }
+  .card h2 { font-size: 24px; font-weight: 500; padding-bottom: 12px; border-bottom: 2px solid var(--line); margin-bottom: 16px; }
+  .card h2 small { font-size: 13.5px; font-weight: 400; color: var(--muted); margin-left: 10px; }
+  .card h3 { font-size: 15px; font-weight: 700; margin: 0 0 8px; }
+  .card h3 small { font-weight: 400; color: var(--muted); margin-left: 6px; }
+  .group + .group { margin-top: 18px; }
+
+  .columns { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 26px; align-items: start; }
+  .notice { background: #fff8e1; border: 1px solid #f0dca0; border-radius: 4px; padding: 9px 14px; margin-bottom: 18px; font-size: 14px; }
+
+  @media (max-width: 1100px) {
+    .columns { grid-template-columns: minmax(0, 1fr); }
+    #view-conditions .col-side { order: -1; }
+  }
+  @media (max-width: 860px) {
+    .shell { grid-template-columns: minmax(0, 1fr); gap: 14px; padding: 0 0 48px; }
+    .side { position: static; }
+    .steps { display: grid; grid-template-columns: 1fr 1fr; }
+    .steps li a { flex-wrap: wrap; gap: 0 10px; }
+    .sections { display: none; }
+    .content { padding: 0 12px; }
+    .card { padding: 18px 16px; }
+    .card h2 { font-size: 20px; }
   }
 
-  .doc-title {
-    font-family: "Nanum Myeongjo", "Batang", serif; font-weight: 800;
-    font-size: 34px; line-height: 1.2; text-align: center;
-    letter-spacing: 0.42em; margin-right: -0.42em;  /* 마지막 글자 뒤 자간만큼 당겨 가운데를 맞춘다 */
-  }
-  .doc-lead { text-align: center; color: var(--faint); margin: 10px 0 26px; }
-  .notice { border-left: 4px solid var(--marker); background: #fffbe0; padding: 8px 12px; margin-bottom: 20px; font-size: 14px; }
-
-  /* 양식: 항목 칸 | 내용 칸 */
-  .form { border: 1.5px solid var(--ink); }
-  .row { display: grid; grid-template-columns: 148px minmax(0, 1fr); border-bottom: 1px solid var(--rule); }
-  .row:last-child { border-bottom: 0; }
-  .row > .label { background: var(--label); border-right: 1px solid var(--rule); padding: 14px 14px; font-weight: 600; }
-  .row > .label small { display: block; font-weight: 400; font-size: 12.5px; color: var(--faint); margin-top: 2px; line-height: 1.4; }
-  .row > .value { padding: 12px 14px; min-width: 0; }
-  @media (max-width: 640px) {
-    .row { grid-template-columns: minmax(0, 1fr); }
-    .row > .label { border-right: 0; border-bottom: 1px solid var(--rule-light); padding: 8px 12px; }
-    .row > .label small { display: inline; margin-left: 6px; }
-    .row > .value { padding: 12px; }
-  }
-
+  /* 입력 */
   .inline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   input[type="number"], input[type="search"], input[type="text"], select {
-    background: var(--sheet); border: 0; border-bottom: 1.5px solid var(--ink); border-radius: 0;
-    padding: 6px 4px; min-height: 38px;
+    background: #fff; border: 1px solid #c9ced8; border-radius: 3px; padding: 6px 9px; min-height: 38px;
   }
-  input[type="number"] { width: 64px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
+  input[type="number"] { width: 68px; text-align: center; font-variant-numeric: tabular-nums; }
   input[type="search"] { width: 100%; }
-  select { padding-right: 2px; }
-
-  /* 요일 칸: 고르면 형광펜으로 칠한다 */
-  .days { display: inline-flex; border: 1px solid var(--rule); }
-  .days label { position: relative; border-right: 1px solid var(--rule); }
-  .days label:last-child { border-right: 0; }
+  .days { display: grid; grid-template-columns: repeat(5, 1fr); max-width: 320px; }
+  .days label { position: relative; }
   .days input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
-  .days span { display: grid; place-items: center; width: 46px; height: 40px; }
-  .days input:checked + span { background: var(--marker); font-weight: 600; }
-  .days input:focus-visible + span { outline: 3px solid var(--stamp); outline-offset: -3px; }
-
-  .time-pair { display: flex; flex-wrap: wrap; gap: 8px 28px; }
-  .time-pair label { color: var(--faint); margin-right: 8px; }
-  .category-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 3px 0; max-width: 340px; }
+  .days span { display: grid; place-items: center; height: 44px; font-size: 16px; }
+  .days input:checked + span { background: var(--tan); font-weight: 700; }
+  .days input:focus-visible + span { outline: 3px solid #2b5fd9; outline-offset: -3px; }
+  .days-head { display: grid; grid-template-columns: repeat(5, 1fr); max-width: 320px; background: var(--gold); color: #fff; font-weight: 700; text-align: center; }
+  .days-head span { padding: 7px 0; }
+  .time-pair { display: grid; gap: 8px; }
+  .time-pair label { display: inline-block; width: 86px; color: var(--muted); }
+  .category-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 0; max-width: 360px; }
   .check { display: flex; align-items: center; gap: 8px; }
-  .check input { width: 18px; height: 18px; accent-color: var(--ink); }
+  .check input { width: 18px; height: 18px; accent-color: var(--taupe); }
   .extra-blocks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
-  .extra-blocks button { border: 0; background: none; color: var(--stamp); text-decoration: underline; padding: 4px; }
+  .extra-blocks button { border: 0; background: none; color: var(--taupe); text-decoration: underline; padding: 4px; }
 
-  .course-list { margin-top: 10px; max-height: 300px; overflow: auto; border-top: 1px solid var(--rule-light); }
-  .course-list li { display: flex; align-items: center; gap: 10px; justify-content: space-between; padding: 7px 4px; border-bottom: 1px solid var(--rule-light); }
-  .course-list .name { font-weight: 500; padding: 0 2px; }
-  .course-list .meta { display: block; color: var(--faint); font-size: 13px; padding: 0 2px; }
+  /* 과목 목록: 공지 목록처럼 한 줄씩 */
+  .course-list { margin-top: 10px; max-height: 520px; overflow: auto; }
+  .course-list li { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 10px 4px; border-bottom: 1px solid #eef0f3; }
+  .course-list .name { font-size: 16px; }
+  .course-list .meta { display: block; color: var(--muted); font-size: 13px; }
   .course-list select { min-height: 34px; font-size: 14px; flex: none; }
-  .course-list li[data-choice="must"] .name { background: var(--marker); }
-  .course-list li[data-choice="skip"] .name, .course-list li[data-choice="done"] .name { text-decoration: line-through; color: var(--faint); }
-  .course-list .empty { color: var(--faint); justify-content: flex-start; }
+  .course-list li[data-choice="must"] .name { font-weight: 700; box-shadow: inset 0 -0.55em 0 #f6dfa6; }
+  .course-list li[data-choice="skip"] .name, .course-list li[data-choice="done"] .name { text-decoration: line-through; color: #9aa0ab; }
+  .course-list .empty { color: var(--muted); justify-content: flex-start; }
 
-  .form-message { border: 1.5px solid var(--stamp); color: var(--stamp); padding: 10px 14px; margin-top: 18px; }
+  .form-message { background: #fdecea; border: 1px solid #f1b9b3; color: #8f2318; border-radius: 4px; padding: 10px 14px; margin-top: 18px; }
   .form-message strong { display: block; }
-  .actions { display: flex; justify-content: flex-end; margin-top: 22px; }
-  .submit { min-height: 48px; padding: 0 28px; border: 0; background: var(--ink); color: #fff; font-weight: 600; font-size: 16px; }
-  .submit:hover { background: #2a3663; }
-  .submit:disabled { background: #7d86a3; cursor: progress; }
-  @media (max-width: 640px) { .actions .submit { width: 100%; } }
+  .primary { min-height: 48px; padding: 0 26px; border: 0; border-radius: 3px; background: var(--taupe); color: #fff; font-weight: 700; font-size: 16px; }
+  .primary:hover { background: #766355; }
+  .primary:disabled { background: #b9aea6; cursor: progress; }
+  /* 조건 화면: 한 번에 한 항목만 보인다 */
+  #conditions { max-width: 880px; }
+  #conditions .card { margin-top: 0; min-height: 300px; }
+  .pager { display: flex; align-items: center; gap: 12px; margin-top: 18px; }
+  .pager-count { flex: 1; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .pager .primary { min-width: 132px; }
+  .secondary { min-height: 48px; min-width: 96px; padding: 0 20px; border: 1px solid #c9ced8; border-radius: 3px; background: #fff; font-size: 16px; }
+  .secondary:hover { border-color: var(--taupe); }
+  .secondary:disabled { color: #b4b9c3; border-color: #e3e6eb; cursor: default; }
+  .sections button[aria-current="true"] { background: var(--gold-deep); box-shadow: inset 5px 0 0 #fff; }
 
-  /* 시간표 화면 */
-  .topbar { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 22px; }
-  .topbar .doc-title { text-align: left; font-size: 30px; }
-  .plain { border: 0; background: none; text-decoration: underline; text-underline-offset: 3px; padding: 8px 2px; }
-  .applied { margin-bottom: 26px; }
-  .applied ul { display: flex; flex-wrap: wrap; gap: 4px 0; }
-  .applied li:not(:last-child)::after { content: ","; margin-right: 8px; }
+  /* 탭: 고른 것은 회갈색, 나머지는 회색 */
+  .tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+  .tabs button { border: 0; background: var(--tab-off); padding: 11px 22px; font-size: 17px; margin-right: 2px; }
+  .tabs button[aria-selected="true"] { background: var(--taupe); color: #fff; font-weight: 500; }
+  .summary { font-size: 19px; font-weight: 500; }
+  .sub { color: var(--muted); margin-bottom: 16px; }
 
-  /* 서류철 색인 탭 */
-  .tabs { display: flex; padding-left: 10px; }
-  .tabs button {
-    border: 1.5px solid var(--ink); border-bottom: 0; margin-right: -1.5px; background: var(--label);
-    padding: 7px 18px; min-height: 38px; position: relative; top: 1.5px;
-  }
-  .tabs button[aria-selected="true"] { background: var(--sheet); font-weight: 600; z-index: 1; }
-  .folder { border: 1.5px solid var(--ink); }
-  .folder-head { padding: 14px 16px 12px; border-bottom: 1px solid var(--rule); }
-  .summary { font-size: 19px; font-weight: 600; }
-  .sub { color: var(--faint); }
-
-  .board-wrap, .table-wrap { overflow-x: auto; }
+  .board-wrap { overflow-x: auto; }
   .board { display: grid; min-width: 560px; }
-  .board .corner, .board .dayname { border-bottom: 1px solid var(--rule); background: var(--label); padding: 7px 0; text-align: center; font-weight: 600; }
-  .board .dayname { border-left: 1px solid var(--rule); }
-  .board .dayname.free { font-weight: 400; color: var(--faint); }
+  .board .corner, .board .dayname { background: var(--gold); color: #fff; padding: 10px 0; text-align: center; font-weight: 700; font-size: 16px; }
+  .board .dayname.free { font-weight: 400; }
   .board .hours { position: relative; }
-  .board .hours span { position: absolute; right: 8px; transform: translateY(-50%); font-size: 12.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .board .hours span { position: absolute; right: 8px; transform: translateY(-50%); font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
   .board .day {
-    position: relative; border-left: 1px solid var(--rule);
-    background-image: linear-gradient(to bottom, var(--rule-light) 1px, transparent 1px);
+    position: relative; border-left: 1px solid #eceef2;
+    background-image: linear-gradient(to bottom, #eceef2 1px, transparent 1px);
     background-size: 100% var(--hour);
   }
-  .board .day.free {
-    background-image: repeating-linear-gradient(135deg, transparent 0 9px, rgba(136, 145, 168, 0.22) 9px 10px);
-    background-size: auto;
-  }
-  .block { position: absolute; left: 0; right: 0; overflow: hidden; padding: 4px 7px; font-size: 12.5px; line-height: 1.35; border-top: 2px solid rgba(27, 36, 64, 0.55); }
-  .block strong { display: block; font-size: 13.5px; font-weight: 600; }
+  .board .day.free { background-color: #f7f8fa; }
+  .board .day:last-child { border-right: 1px solid #eceef2; }
+  .block { position: absolute; left: 2px; right: 2px; overflow: hidden; padding: 4px 7px; font-size: 12.5px; line-height: 1.35; border-left: 4px solid rgba(0, 0, 0, 0.28); border-radius: 2px; }
+  .block strong { display: block; font-size: 13.5px; font-weight: 700; }
   .block span { display: block; font-variant-numeric: tabular-nums; }
-  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 10px 0 26px; color: var(--faint); font-size: 13.5px; }
-  .legend i { display: inline-block; width: 22px; height: 10px; margin-right: 6px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 12px; color: var(--muted); font-size: 13.5px; }
+  .legend i { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px; }
 
-  table { border-collapse: collapse; width: 100%; }
-  .courses { min-width: 620px; border: 1.5px solid var(--ink); }
-  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--rule-light); vertical-align: top; }
-  th { background: var(--label); border-bottom: 1px solid var(--rule); font-weight: 600; font-size: 13.5px; white-space: nowrap; }
-  tr:last-child td { border-bottom: 0; }
-  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
-  td .mark { padding: 0 3px; }
-  .courses td:first-child { min-width: 10em; }
+  .applied li { padding: 7px 0; border-bottom: 1px solid #eef0f3; }
+  .applied li:last-child { border-bottom: 0; }
+  .picked li { padding: 10px 0; border-bottom: 1px solid #eef0f3; }
+  .picked li:last-child { border-bottom: 0; }
+  .picked .name { font-weight: 500; }
+  .picked .name i { display: inline-block; width: 10px; height: 10px; margin-right: 7px; }
+  .picked .meta { display: block; color: var(--muted); font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  .back { margin-top: 14px; width: 100%; min-height: 42px; border: 1px solid #c9ced8; border-radius: 3px; background: #fff; }
+  .back:hover { border-color: var(--taupe); }
 
-  /* 수정 요청 대장 */
-  .requests { margin-top: 36px; }
-  .requests h2 { font-family: "Nanum Myeongjo", "Batang", serif; font-weight: 800; font-size: 22px; letter-spacing: 0.2em; }
-  .requests > p { color: var(--faint); margin: 4px 0 14px; }
-  .ledger { border: 1.5px solid var(--ink); border-bottom: 0; }
-  .ledger th:first-child, .ledger td:first-child { width: 42%; border-right: 1px solid var(--rule); }
-  .ledger td { border-bottom: 1px solid var(--rule); overflow-wrap: anywhere; }
-  .ledger tr:last-child td { border-bottom: 1px solid var(--rule); }
-  .ledger .pending { color: var(--faint); }
-  .ledger .problem { color: var(--stamp); }
-  .stamp {
-    display: inline-block; margin-left: 8px; padding: 0 6px; border: 2px solid var(--stamp); border-radius: 4px;
-    color: var(--stamp); font-family: "Nanum Myeongjo", "Batang", serif; font-weight: 800; font-size: 13px;
-    transform: rotate(-5deg); white-space: nowrap;
-  }
-  .request-form { display: flex; border: 1.5px solid var(--ink); }
-  .request-form input { flex: 1; min-width: 0; min-height: 48px; border: 0; padding: 0 14px; }
-  .request-form .submit { min-height: 48px; }
+  /* 수정 요청 */
+  .ledger { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+  .ledger th { text-align: left; background: #f5f6f8; font-weight: 500; font-size: 14px; padding: 8px 12px; border-bottom: 1px solid #d5d9e0; }
+  .ledger td { padding: 10px 12px; border-bottom: 1px solid #eef0f3; vertical-align: top; overflow-wrap: anywhere; }
+  .ledger th:first-child, .ledger td:first-child { width: 40%; }
+  .ledger .pending { color: var(--muted); }
+  .ledger .problem { color: #a12a1d; }
+  .done { display: inline-block; margin-left: 8px; padding: 0 8px; border-radius: 3px; background: var(--tan); font-size: 13px; font-weight: 700; white-space: nowrap; }
+  .request-form { display: flex; gap: 8px; }
+  .request-form input { flex: 1; min-width: 0; min-height: 48px; padding: 0 14px; }
 </style>
 </head>
 <body>
+<div class="shell">
+  <aside class="side">
+    <nav aria-label="단계">
+      <ul class="steps">
+        <li>
+          <a href="#" id="step-conditions">조건 적기 <span id="count-conditions"></span></a>
+          <button type="button" class="reset" id="reset" hidden>초기화</button>
+        </li>
+        <li><a href="#timetable" id="step-timetable">시간표 <span id="count-timetable"></span></a></li>
+      </ul>
+    </nav>
+    <nav aria-label="이 화면의 항목"><ul class="sections" id="side-sections"></ul></nav>
+  </aside>
 
-<!-- 1단계: 조건 적기 -->
-<main class="desk" id="view-conditions">
-  <div class="sheet form-size">
-    <h1 class="doc-title">수강 계획서</h1>
-    <p class="doc-lead">적은 조건대로, 시간이 겹치지 않게 이번 학기 시간표를 짭니다.</p>
-
-    <p class="notice" id="sample-notice" hidden>지금 나오는 과목은 예시로 넣어 둔 가짜 과목입니다.</p>
-
-    <form id="conditions">
-      <div class="form">
-        <div class="row" role="group" aria-labelledby="l-credits">
-          <div class="label" id="l-credits">학점</div>
-          <div class="value inline">
-            <input type="number" id="min-credits" value="12" min="1" max="30" step="1" aria-label="최소 학점">
-            <span>학점 이상</span>
-            <input type="number" id="max-credits" value="18" min="1" max="30" step="1" aria-label="최대 학점">
-            <span>학점 이하</span>
-          </div>
-        </div>
-
-        <div class="row" role="group" aria-labelledby="l-preferred">
-          <div class="label" id="l-preferred">공강 희망 요일<small>되는 만큼만 비웁니다</small></div>
-          <div class="value"><div class="days" id="preferred-days"></div></div>
-        </div>
-
-        <div class="row" role="group" aria-labelledby="l-blocked">
-          <div class="label" id="l-blocked">수업 없는 요일<small>이 요일엔 넣지 않습니다</small></div>
-          <div class="value"><div class="days" id="blocked-days"></div></div>
-        </div>
-
-        <div class="row" role="group" aria-labelledby="l-time">
-          <div class="label" id="l-time">수업 시간</div>
-          <div class="value time-pair">
-            <span>
-              <label for="earliest">첫 수업</label>
-              <select id="earliest">
-                <option value="">상관없음</option>
-                <option value="09:30">9시 30분 이후</option>
-                <option value="10:00">10시 이후</option>
-                <option value="10:30">10시 30분 이후</option>
-                <option value="11:00">11시 이후</option>
-                <option value="12:00">12시 이후</option>
-                <option value="13:00">오후 1시 이후</option>
-              </select>
-            </span>
-            <span>
-              <label for="latest">마지막 수업</label>
-              <select id="latest">
-                <option value="">상관없음</option>
-                <option value="15:00">오후 3시까지</option>
-                <option value="16:00">오후 4시까지</option>
-                <option value="17:00">오후 5시까지</option>
-                <option value="18:00">오후 6시까지</option>
-                <option value="19:00">오후 7시까지</option>
-              </select>
-            </span>
-          </div>
-        </div>
-
-        <div class="row" role="group" aria-labelledby="l-extra" id="extra-blocks-field" hidden>
-          <div class="label" id="l-extra">따로 비운 시간<small>수정 요청으로 추가됨</small></div>
-          <div class="value"><ul class="extra-blocks" id="extra-blocks"></ul></div>
-        </div>
-
-        <div class="row" role="group" aria-labelledby="l-category">
-          <div class="label" id="l-category">영역별 최소 학점<small>꼭 채울 학점만 적습니다</small></div>
-          <div class="value" id="categories"></div>
-        </div>
-
-        <div class="row" role="group" aria-labelledby="l-courses">
-          <div class="label" id="l-courses">과목<small>꼭 넣을 과목, 뺄 과목, 이미 들은 과목</small></div>
-          <div class="value">
+  <div class="content">
+    <!-- 1단계: 조건 적기 -->
+    <main id="view-conditions">
+      <p class="notice" id="sample-notice" hidden>지금 나오는 과목은 예시로 넣어 둔 가짜 과목입니다.</p>
+      <form id="conditions">
+          <section class="card" id="sec-courses">
+            <h2>과목<small>꼭 넣을 과목, 뺄 과목, 이미 들은 과목을 표시합니다</small></h2>
             <input type="search" id="course-search" placeholder="과목명이나 교과목코드" aria-label="과목 찾기">
             <ul class="course-list" id="course-list"></ul>
+          </section>
+
+          <section class="card" id="sec-category">
+            <h2>영역별 최소 학점<small>꼭 채울 학점만 적습니다</small></h2>
+            <div id="categories"></div>
+          </section>
+
+          <section class="card" id="sec-credits">
+            <h2>학점</h2>
+            <div class="inline">
+              <input type="number" id="min-credits" value="12" min="1" max="30" step="1" aria-label="최소 학점">
+              <span>학점 이상</span>
+              <input type="number" id="max-credits" value="18" min="1" max="30" step="1" aria-label="최대 학점">
+              <span>학점 이하</span>
+            </div>
+          </section>
+
+          <section class="card" id="sec-days">
+            <h2>요일</h2>
+            <div class="group" role="group" aria-labelledby="h-preferred">
+              <h3 id="h-preferred">공강 희망<small>되는 만큼만 비웁니다</small></h3>
+              <div class="days-head" aria-hidden="true"><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span></div>
+              <div class="days" id="preferred-days"></div>
+            </div>
+            <div class="group" role="group" aria-labelledby="h-blocked">
+              <h3 id="h-blocked">수업 없는 날<small>이 요일엔 넣지 않습니다</small></h3>
+              <div class="days-head" aria-hidden="true"><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span></div>
+              <div class="days" id="blocked-days"></div>
+            </div>
+          </section>
+
+          <section class="card" id="sec-time">
+            <h2>수업 시간</h2>
+            <div class="time-pair">
+              <span>
+                <label for="earliest">첫 수업</label>
+                <select id="earliest">
+                  <option value="">상관없음</option>
+                  <option value="09:30">9시 30분 이후</option>
+                  <option value="10:00">10시 이후</option>
+                  <option value="10:30">10시 30분 이후</option>
+                  <option value="11:00">11시 이후</option>
+                  <option value="12:00">12시 이후</option>
+                  <option value="13:00">오후 1시 이후</option>
+                </select>
+              </span>
+              <span>
+                <label for="latest">마지막 수업</label>
+                <select id="latest">
+                  <option value="">상관없음</option>
+                  <option value="15:00">오후 3시까지</option>
+                  <option value="16:00">오후 4시까지</option>
+                  <option value="17:00">오후 5시까지</option>
+                  <option value="18:00">오후 6시까지</option>
+                  <option value="19:00">오후 7시까지</option>
+                </select>
+              </span>
+            </div>
+            <div class="group" id="extra-blocks-field" hidden>
+              <h3>따로 비운 시간<small>수정 요청으로 추가됨</small></h3>
+              <ul class="extra-blocks" id="extra-blocks"></ul>
+            </div>
+            <div class="group">
+              <label class="check"><input type="checkbox" id="exclude-full"> 정원이 찬 강좌는 뺍니다</label>
+            </div>
+          </section>
+
+          <div class="form-message" id="form-message" role="alert" hidden></div>
+          <div class="pager">
+            <button class="secondary" type="button" id="prev">이전</button>
+            <span class="pager-count" id="pager-count" aria-live="polite"></span>
+            <button class="primary" type="button" id="next">다음</button>
+            <button class="primary" type="submit" id="go" hidden>시간표 짜기</button>
           </div>
-        </div>
-
-        <div class="row" role="group" aria-labelledby="l-full">
-          <div class="label" id="l-full">정원</div>
-          <div class="value"><label class="check"><input type="checkbox" id="exclude-full"> 정원이 찬 강좌는 뺍니다</label></div>
-        </div>
-      </div>
-
-      <div class="form-message" id="form-message" role="alert" hidden></div>
-      <div class="actions"><button class="submit" type="submit" id="go">시간표 짜기</button></div>
-    </form>
-  </div>
-</main>
-
-<!-- 2단계: 시간표와 수정 요청 -->
-<main class="desk" id="view-timetable" hidden>
-  <div class="sheet table-size">
-    <div class="topbar">
-      <h1 class="doc-title">시간표</h1>
-      <button class="plain" type="button" id="back">조건 다시 적기</button>
-    </div>
-
-    <div class="form applied">
-      <div class="row">
-        <div class="label">적용한 조건</div>
-        <div class="value"><ul id="applied-list"></ul></div>
-      </div>
-    </div>
-
-    <section id="result" aria-live="polite"></section>
-
-    <section class="requests" aria-labelledby="requests-title">
-      <h2 id="requests-title">수정 요청</h2>
-      <p>넣을 과목, 뺄 과목, 비울 요일을 적어 보내면 시간표를 다시 짭니다.</p>
-      <table class="ledger" id="ledger" hidden>
-        <thead><tr><th scope="col">요청</th><th scope="col">처리</th></tr></thead>
-        <tbody id="ledger-rows" aria-live="polite"></tbody>
-      </table>
-      <form class="request-form" id="chat-form">
-        <input type="text" id="chat-input" maxlength="500" autocomplete="off" aria-label="수정 요청"
-               placeholder="세계의 문화 넣어줘 / 운영체제 빼줘 / 금요일은 비워줘">
-        <button class="submit" type="submit" id="chat-send">보내기</button>
       </form>
-    </section>
+    </main>
+
+    <!-- 2단계: 시간표와 수정 요청 -->
+    <main id="view-timetable" hidden>
+      <div class="columns">
+        <div class="col-main">
+          <section class="card" id="sec-board" aria-live="polite">
+            <div id="result"></div>
+          </section>
+
+          <section class="card" id="sec-requests">
+            <h2>수정 요청<small>넣을 과목, 뺄 과목, 비울 요일을 적어 보내면 다시 짭니다</small></h2>
+            <table class="ledger" id="ledger" hidden>
+              <thead><tr><th scope="col">요청</th><th scope="col">처리</th></tr></thead>
+              <tbody id="ledger-rows" aria-live="polite"></tbody>
+            </table>
+            <form class="request-form" id="chat-form">
+              <input type="text" id="chat-input" maxlength="500" autocomplete="off" aria-label="수정 요청"
+                     placeholder="세계의 문화 넣어줘 / 운영체제 빼줘 / 금요일은 비워줘">
+              <button class="primary" type="submit" id="chat-send">보내기</button>
+            </form>
+          </section>
+        </div>
+
+        <div class="col-side">
+          <section class="card" id="sec-picked">
+            <h2>수강 과목</h2>
+            <ul class="picked" id="picked-list"></ul>
+          </section>
+
+          <section class="card" id="sec-applied">
+            <h2>적용한 조건</h2>
+            <ul class="applied" id="applied-list"></ul>
+            <button class="back" type="button" id="back">조건 다시 적기</button>
+          </section>
+        </div>
+      </div>
+    </main>
   </div>
-</main>
+</div>
 
 <script>
 const DAYS = ['월', '화', '수', '목', '금', '토', '일'];
 const WEEKDAYS = DAYS.slice(0, 5);
 const DAY_NAMES = { 월: '월요일', 화: '화요일', 수: '수요일', 목: '목요일', 금: '금요일', 토: '토요일', 일: '일요일' };
-const MARKERS = ['#ffe566', '#ffc4d3', '#bfe7c4', '#bcdcfb', '#ffd2a6', '#dccbf7'];  // 형광펜 색
+const TINTS = ['#f6dfa6', '#dccdc2', '#cfe3d2', '#cfdcee', '#f4cdb8', '#ddd4ea'];  // 과목 칸 색
 const LIST_LIMIT = 60;
 const STORAGE_KEY = 'course-planner-request';
+const SECTIONS = {
+  conditions: [['과목', 'sec-courses'], ['영역별 최소 학점', 'sec-category'], ['학점', 'sec-credits'], ['요일', 'sec-days'], ['수업 시간', 'sec-time']],
+  timetable: [['시간표', 'sec-board'], ['수정 요청', 'sec-requests'], ['수강 과목', 'sec-picked'], ['적용한 조건', 'sec-applied']],
+};
 
 const state = {
   subjects: [], nameOf: new Map(), categories: [],
   choice: new Map(), extraBlocks: [],
   request: null, timetables: [], truncated: false, active: 0,
   chat: [],
+  view: 'conditions', panel: 0,
 };
 const $ = (id) => document.getElementById(id);
 
@@ -341,7 +366,7 @@ function el(tag, props = {}, children = []) {
 }
 
 const toMinutes = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
-const markerOf = (category) => MARKERS[Math.max(0, state.categories.indexOf(category)) % MARKERS.length];
+const tintOf = (category) => TINTS[Math.max(0, state.categories.indexOf(category)) % TINTS.length];
 const num = (value) => String(Number(value));
 const nameOf = (code) => state.nameOf.get(code) || code;
 const isWholeDay = (block) => block.start === '00:00' && block.end === '24:00';
@@ -428,6 +453,7 @@ function renderExtraBlocks() {
     remove.addEventListener('click', () => {
       state.extraBlocks = state.extraBlocks.filter((other) => other !== block);
       renderExtraBlocks();
+      updateSide();
     });
     return el('li', {}, [el('span', { text: blockText(block) }), remove]);
   }));
@@ -554,7 +580,7 @@ function renderBoard(timetable) {
       const place = [course.building, course.room].filter(Boolean).join(' ');
       column.append(el('div', {
         class: 'block',
-        style: `top: ${top}px; height: ${size}px; background: ${markerOf(course.category)}`,
+        style: `top: ${top + 1}px; height: ${size - 2}px; background: ${tintOf(course.category)}`,
         title: `${course.name} ${meeting.start}~${meeting.end} ${place}`.trim(),
       }, [
         el('strong', { text: course.name }),
@@ -567,23 +593,18 @@ function renderBoard(timetable) {
   return el('div', { class: 'board-wrap' }, board);
 }
 
-function renderTable(timetable) {
-  const rows = timetable.courses.map((course) => {
+function renderPicked(timetable) {
+  $('picked-list').replaceChildren(...timetable.courses.map((course) => {
     const time = course.meetings.length
       ? course.meetings.map((m) => `${m.day} ${m.start}~${m.end}`).join(', ')
       : '시간 미정';
-    return el('tr', {}, [
-      el('td', {}, el('span', { class: 'mark', style: `background: ${markerOf(course.category)}`, text: course.name })),
-      el('td', { class: 'num', text: course.course_id }),
-      el('td', { text: course.category }),
-      el('td', { class: 'num', text: num(course.credits) }),
-      el('td', { text: course.professor || '' }),
-      el('td', { class: 'num', text: time }),
-      el('td', { text: [course.building, course.room].filter(Boolean).join(' ') }),
+    const place = [course.building, course.room].filter(Boolean).join(' ');
+    return el('li', {}, [
+      el('span', { class: 'name' }, [el('i', { style: `background: ${tintOf(course.category)}` }), course.name]),
+      el('span', { class: 'meta', text: [course.course_id, course.category, `${num(course.credits)}학점`, course.professor].filter(Boolean).join(', ') }),
+      el('span', { class: 'meta', text: [time, place].filter(Boolean).join(', ') }),
     ]);
-  });
-  const head = el('tr', {}, ['과목', '강좌번호', '구분', '학점', '담당교수', '시간', '강의실'].map((text) => el('th', { scope: 'col', text })));
-  return el('div', { class: 'table-wrap' }, el('table', { class: 'courses' }, [el('thead', {}, head), el('tbody', {}, rows)]));
+  }));
 }
 
 function renderTimetable() {
@@ -606,17 +627,14 @@ function renderTimetable() {
 
   $('result').replaceChildren(
     tabs,
-    el('div', { class: 'folder' }, [
-      el('div', { class: 'folder-head' }, [
-        el('p', { class: 'summary', text: parts.join(', ') }),
-        el('p', { class: 'sub', text: state.truncated ? `${byCategory}. 과목이 많아 일부 조합만 살펴봤습니다.` : byCategory }),
-      ]),
-      renderBoard(timetable),
-    ]),
+    el('p', { class: 'summary', text: parts.join(', ') }),
+    el('p', { class: 'sub', text: state.truncated ? `${byCategory}. 과목이 많아 일부 조합만 살펴봤습니다.` : byCategory }),
+    renderBoard(timetable),
     el('div', { class: 'legend' }, used.map((category) =>
-      el('span', {}, [el('i', { style: `background: ${markerOf(category)}` }), category]))),
-    renderTable(timetable),
+      el('span', {}, [el('i', { style: `background: ${tintOf(category)}` }), category]))),
   );
+  renderPicked(timetable);
+  if (state.view === 'timetable') updateSide();
 }
 
 function adopt(request, result) {
@@ -649,8 +667,143 @@ async function generate(request) {
 function show(view) {
   $('view-conditions').hidden = view !== 'conditions';
   $('view-timetable').hidden = view !== 'timetable';
-  document.title = view === 'timetable' ? '시간표' : '수강 계획서';
+  document.title = view === 'timetable' ? '시간표' : '수강 계획';
+
+  for (const [id, name] of [['step-conditions', 'conditions'], ['step-timetable', 'timetable']]) {
+    if (view === name) $(id).setAttribute('aria-current', 'page'); else $(id).removeAttribute('aria-current');
+  }
+  $('step-timetable').classList.toggle('off', !state.timetables.length);
+  $('side-sections').replaceChildren(...SECTIONS[view].map(([label, id], index) => {
+    const button = el('button', { type: 'button' }, [el('span', { text: label }), el('em', { 'data-for': id })]);
+    // 조건 화면에서는 그 항목만 보여 주고, 시간표 화면에서는 그 카드로 내려간다.
+    button.addEventListener('click', () => {
+      if (view === 'conditions') setPanel(index);
+      else $(id).scrollIntoView({ block: 'start' });
+    });
+    return el('li', {}, button);
+  }));
+  state.view = view;
+  if (view === 'conditions') setPanel(state.panel);
+  updateSide();
   window.scrollTo(0, 0);
+}
+
+/* 조건 화면에서 항목 하나만 보여 준다. 마지막 항목에서만 '시간표 짜기'가 나온다. */
+function setPanel(index) {
+  const panels = SECTIONS.conditions;
+  state.panel = Math.max(0, Math.min(index, panels.length - 1));
+  panels.forEach(([, id], position) => { $(id).hidden = position !== state.panel; });
+  const last = state.panel === panels.length - 1;
+  $('prev').disabled = state.panel === 0;
+  $('next').hidden = last;
+  $('go').hidden = !last;
+  $('pager-count').textContent = `${panels[state.panel][0]} (${state.panel + 1}/${panels.length})`;
+  if (state.view === 'conditions') {
+    [...document.querySelectorAll('#side-sections button')].forEach((button, position) => {
+      if (position === state.panel) button.setAttribute('aria-current', 'true');
+      else button.removeAttribute('aria-current');
+    });
+  }
+  window.scrollTo(0, 0);
+}
+
+/* ---------- 왼쪽 메뉴: 지금 적은 값 ---------- */
+
+function conditionCount(request) {
+  return request.must_include.length + request.exclude.length + request.completed.length
+    + request.blocked_times.length + request.preferred_free_days.length
+    + Object.keys(request.required_credits).length + (request.exclude_full ? 1 : 0);
+}
+
+function conditionValues(request) {
+  const courses = [
+    request.must_include.length ? `꼭 넣기 ${request.must_include.length}` : '',
+    request.exclude.length ? `빼기 ${request.exclude.length}` : '',
+    request.completed.length ? `들음 ${request.completed.length}` : '',
+  ].filter(Boolean);
+
+  const days = [], times = [];
+  if (request.preferred_free_days.length) days.push(`${request.preferred_free_days.join('')} 공강 희망`);
+  const noClass = request.blocked_times.filter((block) => block.day && isWholeDay(block)).map((block) => block.day);
+  if (noClass.length) days.push(`${noClass.join('')} 수업 없음`);
+  for (const block of request.blocked_times) {
+    if (block.day && isWholeDay(block)) continue;
+    if (!block.day && block.start === '00:00') times.push(`${block.end} 이후`);
+    else if (!block.day && block.end === '24:00') times.push(`${block.start}까지`);
+    else times.push(`${block.day || '매일'} ${block.start}~${block.end} 비움`);
+  }
+  if (request.exclude_full) times.push('정원 찬 강좌 제외');
+
+  return {
+    'sec-courses': courses.join(', '),
+    'sec-category': Object.entries(request.required_credits).map(([category, value]) => `${category} ${num(value)}`).join(', '),
+    'sec-credits': `${num(request.min_credits)}~${num(request.max_credits)}학점`,
+    'sec-days': days.join(', '),
+    'sec-time': times.join(', '),
+  };
+}
+
+function timetableValues() {
+  const timetable = state.timetables[state.active];
+  if (!timetable) return {};
+  const asked = $('ledger-rows').children.length;
+  return {
+    'sec-board': `${state.active + 1}안, ${num(timetable.total_credits)}학점`,
+    'sec-requests': asked ? `${asked}건` : '',
+    'sec-picked': `${timetable.courses.length}과목`,
+    'sec-applied': `${conditionCount(state.request)}개`,
+  };
+}
+
+function updateSide() {
+  const onConditions = state.view !== 'timetable';
+  const request = onConditions ? requestFromForm() : state.request;
+  const values = onConditions ? conditionValues(request) : timetableValues();
+  for (const slot of document.querySelectorAll('#side-sections em')) {
+    const value = values[slot.dataset.for];
+    slot.textContent = value || (onConditions ? '상관없음' : '없음');
+    slot.classList.toggle('empty', !value);
+  }
+  const count = conditionCount(request);
+  $('count-conditions').textContent = count ? `조건 ${count}개` : '아직 없음';
+  $('count-timetable').textContent = state.timetables.length ? `${state.timetables.length}안` : '아직 없음';
+  const changed = count > 0 || request.min_credits !== 12 || request.max_credits !== 18;
+  $('reset').hidden = !(onConditions && changed);
+}
+
+/* 초기화: 한 번 누르면 되묻고, 한 번 더 눌러야 지운다. */
+let resetTimer = null;
+function disarmReset() {
+  clearTimeout(resetTimer);
+  $('reset').classList.remove('sure');
+  $('reset').textContent = '초기화';
+}
+function onReset() {
+  const button = $('reset');
+  if (!button.classList.contains('sure')) {
+    button.classList.add('sure');
+    button.textContent = '정말 지울까요?';
+    resetTimer = setTimeout(disarmReset, 4000);
+    return;
+  }
+  disarmReset();
+  $('conditions').reset();
+  $('course-search').value = '';
+  $('form-message').hidden = true;
+  state.choice = new Map();
+  state.extraBlocks = [];
+  state.request = null;
+  state.timetables = [];
+  state.chat = [];
+  $('ledger-rows').replaceChildren();
+  $('ledger').hidden = true;
+  try { sessionStorage.removeItem(STORAGE_KEY); } catch (error) { /* 지울 것이 없어도 된다 */ }
+  renderCategories();
+  renderCourseList();
+  renderExtraBlocks();
+  $('step-timetable').classList.add('off');
+  setPanel(0);
+  updateSide();
 }
 
 async function route() {
@@ -673,6 +826,8 @@ async function route() {
 
 async function submitConditions(event) {
   event.preventDefault();
+  // 마지막 항목이 아닌 곳에서 Enter 를 누르면 시간표를 짜지 않고 다음 항목으로 넘어간다.
+  if (state.panel < SECTIONS.conditions.length - 1) { setPanel(state.panel + 1); return; }
   $('form-message').hidden = true;
   const request = requestFromForm();
   if (!(request.min_credits > 0) || !(request.max_credits > 0) || request.min_credits > request.max_credits) {
@@ -729,7 +884,7 @@ async function sendChat(event) {
     if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : `서버 응답 ${response.status}`);
 
     answer.className = '';
-    answer.replaceChildren(data.reply, data.applied ? el('span', { class: 'stamp', text: '반영' }) : '');
+    answer.replaceChildren(data.reply, data.applied ? el('span', { class: 'done', text: '반영' }) : '');
     state.chat.push({ role: 'user', content: message }, { role: 'assistant', content: data.reply });
     if (data.applied) {
       adopt(data.request, data.result);
@@ -741,6 +896,7 @@ async function sendChat(event) {
   } finally {
     button.disabled = false;
     input.focus();
+    updateSide();
   }
 }
 
@@ -750,8 +906,15 @@ async function init() {
   dayToggles($('preferred-days'), 'preferred');
   dayToggles($('blocked-days'), 'blocked');
   $('conditions').addEventListener('submit', submitConditions);
+  $('conditions').addEventListener('input', updateSide);
+  $('conditions').addEventListener('change', updateSide);
+  $('reset').addEventListener('click', onReset);
+  $('prev').addEventListener('click', () => setPanel(state.panel - 1));
+  $('next').addEventListener('click', () => setPanel(state.panel + 1));
   $('course-search').addEventListener('input', renderCourseList);
+  $('course-search').addEventListener('keydown', (event) => { if (event.key === 'Enter') event.preventDefault(); });
   $('back').addEventListener('click', () => { location.hash = ''; });
+  $('step-timetable').addEventListener('click', (event) => { if (!state.timetables.length) event.preventDefault(); });
   $('chat-form').addEventListener('submit', sendChat);
   window.addEventListener('hashchange', route);
 
