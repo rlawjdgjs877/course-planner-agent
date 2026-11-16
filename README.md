@@ -24,7 +24,7 @@ Python 3.10 이상과 git이 필요합니다.
 ### 1. 코드 받기
 
 ```bash
-git clone https://github.com/<소유자-아이디>/course-planner-agent.git
+git clone https://github.com/rlawjdgjs877/course-planner-agent.git
 cd course-planner-agent/backend
 ```
 
