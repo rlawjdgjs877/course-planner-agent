@@ -1,0 +1,250 @@
+[
+  {
+    "year": 2026,
+    "semester": "2학기",
+    "grade": "2",
+    "category": "전공필수",
+    "college": "샘플대학",
+    "department": "샘플학부",
+    "course_id": "SAMP0201-001",
+    "course_code": "SAMP0201",
+    "section": "001",
+    "name": "자료구조(샘플)",
+    "credits": 3.0,
+    "lecture_hours": 3.0,
+    "lab_hours": 0.0,
+    "professor": "김샘플",
+    "time_raw": "월 09:00 ~ 10:30, 수 09:00 ~ 10:30",
+    "meetings": [
+      {
+        "day": "월",
+        "start": "09:00",
+        "end": "10:30"
+      },
+      {
+        "day": "수",
+        "start": "09:00",
+        "end": "10:30"
+      }
+    ],
+    "building": "샘플관",
+    "room": "101",
+    "capacity": 60,
+    "enrolled": 48
+  },
+  {
+    "year": 2026,
+    "semester": "2학기",
+    "grade": "2",
+    "category": "전공필수",
+    "college": "샘플대학",
+    "department": "샘플학부",
+    "course_id": "SAMP0201-002",
+    "course_code": "SAMP0201",
+    "section": "002",
+    "name": "자료구조(샘플)",
+    "credits": 3.0,
+    "lecture_hours": 3.0,
+    "lab_hours": 0.0,
+    "professor": "이샘플",
+    "time_raw": "화 13:00 ~ 14:30, 목 13:00 ~ 14:30",
+    "meetings": [
+      {
+        "day": "화",
+        "start": "13:00",
+        "end": "14:30"
+      },
+      {
+        "day": "목",
+        "start": "13:00",
+        "end": "14:30"
+      }
+    ],
+    "building": "샘플관",
+    "room": "102",
+    "capacity": 60,
+    "enrolled": 60
+  },
+  {
+    "year": 2026,
+    "semester": "2학기",
+    "grade": "2",
+    "category": "전공선택",
+    "college": "샘플대학",
+    "department": "샘플학부",
+    "course_id": "SAMP0202-001",
+    "course_code": "SAMP0202",
+    "section": "001",
+    "name": "이산수학(샘플)",
+    "credits": 3.0,
+    "lecture_hours": 3.0,
+    "lab_hours": 0.0,
+    "professor": "박샘플",
+    "time_raw": "월 10:00 ~ 11:30, 수 10:00 ~ 11:30",
+    "meetings": [
+      {
+        "day": "월",
+        "start": "10:00",
+        "end": "11:30"
+      },
+      {
+        "day": "수",
+        "start": "10:00",
+        "end": "11:30"
+      }
+    ],
+    "building": "샘플관",
+    "room": "201",
+    "capacity": 50,
+    "enrolled": 31
+  },
+  {
+    "year": 2026,
+    "semester": "2학기",
+    "grade": "3",
+    "category": "전공선택",
+    "college": "샘플대학",
+    "department": "샘플학부",
+    "course_id": "SAMP0301-001",
+    "course_code": "SAMP0301",
+    "section": "001",
+    "name": "운영체제(샘플)",
+    "credits": 3.0,
+    "lecture_hours": 3.0,
+    "lab_hours": 0.0,
+    "professor": "최샘플",
+    "time_raw": "화 10:30 ~ 12:00, 목 10:30 ~ 12:00",
+    "meetings": [
+      {
+        "day": "화",
+        "start": "10:30",
+        "end": "12:00"
+      },
+      {
+        "day": "목",
+        "start": "10:30",
+        "end": "12:00"
+      }
+    ],
+    "building": "샘플관",
+    "room": "202",
+    "capacity": 50,
+    "enrolled": 44
+  },
+  {
+    "year": 2026,
+    "semester": "2학기",
+    "grade": "3",
+    "category": "전공선택",
+    "college": "샘플대학",
+    "department": "샘플학부",
+    "course_id": "SAMP0302-001",
+    "course_code": "SAMP0302",
+    "section": "001",
+    "name": "데이터베이스(샘플)",
+    "credits": 3.0,
+    "lecture_hours": 2.0,
+    "lab_hours": 2.0,
+    "professor": "정샘플",
+    "time_raw": "월 14:00 ~ 16:00, 금 14:00 ~ 15:00",
+    "meetings": [
+      {
+        "day": "월",
+        "start": "14:00",
+        "end": "16:00"
+      },
+      {
+        "day": "금",
+        "start": "14:00",
+        "end": "15:00"
+      }
+    ],
+    "building": "샘플실습관",
+    "room": "B103",
+    "capacity": 40,
+    "enrolled": 40
+  },
+  {
+    "year": 2026,
+    "semester": "2학기",
+    "grade": "1",
+    "category": "교양",
+    "college": "교양교육센터",
+    "department": "교양교육센터",
+    "course_id": "SAMP0101-003",
+    "course_code": "SAMP0101",
+    "section": "003",
+    "name": "글쓰기(샘플)",
+    "credits": 2.0,
+    "lecture_hours": 2.0,
+    "lab_hours": 0.0,
+    "professor": "한샘플",
+    "time_raw": "금 1A,1B,2A,2B",
+    "meetings": [
+      {
+        "day": "금",
+        "start": "09:00",
+        "end": "11:00"
+      }
+    ],
+    "building": "교양관",
+    "room": "305",
+    "capacity": 30,
+    "enrolled": 12
+  },
+  {
+    "year": 2026,
+    "semester": "2학기",
+    "grade": "1",
+    "category": "교양",
+    "college": "교양교육센터",
+    "department": "교양교육센터",
+    "course_id": "SAMP0102-001",
+    "course_code": "SAMP0102",
+    "section": "001",
+    "name": "세계의 문화(샘플)",
+    "credits": 3.0,
+    "lecture_hours": 3.0,
+    "lab_hours": 0.0,
+    "professor": "오샘플",
+    "time_raw": "화 16:00 ~ 17:30, 목 16:00 ~ 17:30",
+    "meetings": [
+      {
+        "day": "화",
+        "start": "16:00",
+        "end": "17:30"
+      },
+      {
+        "day": "목",
+        "start": "16:00",
+        "end": "17:30"
+      }
+    ],
+    "building": "교양관",
+    "room": "410",
+    "capacity": 80,
+    "enrolled": 77
+  },
+  {
+    "year": 2026,
+    "semester": "2학기",
+    "grade": null,
+    "category": "교양",
+    "college": "교양교육센터",
+    "department": "교양교육센터",
+    "course_id": "SAMP0103-001",
+    "course_code": "SAMP0103",
+    "section": "001",
+    "name": "원격 교양 강좌(샘플)",
+    "credits": 2.0,
+    "lecture_hours": 2.0,
+    "lab_hours": 0.0,
+    "professor": "윤샘플",
+    "time_raw": null,
+    "meetings": [],
+    "building": null,
+    "room": null,
+    "capacity": 200,
+    "enrolled": 150
+  }
+]

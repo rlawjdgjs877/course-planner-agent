@@ -12,6 +12,9 @@ backend/
     agent/         # 에이전트 로직 (LLM 호출, 도구 사용)
     services/      # 성적표 파싱, 졸업 요건 계산, 시간표 조회
     data/          # 시간표, 졸업 요건 데이터
+    schemas.py     # 과목 데이터 형식
+  scripts/         # 데이터 변환 스크립트
+  tests/           # 테스트
   requirements.txt
   .env.example
 frontend/          # Next.js (프론트 담당이 생성 예정)
@@ -85,6 +88,40 @@ uvicorn app.main:app --reload
 - 상태 확인: http://localhost:8000/health → `{"status": "ok"}`
 
 서버를 끄려면 터미널에서 `Ctrl + C`를 누릅니다.
+
+## 과목 데이터 만들기 (데이터 담당)
+
+에이전트는 `backend/app/data/courses.json`에서 개설 강좌를 찾습니다. 데이터 형식은 `backend/app/schemas.py`의 `Course`입니다.
+
+학교 시간표 사이트는 `robots.txt`로 자동 수집을 금지하고 있습니다. **프로그램으로 긁어 오지 말고**, 사람이 직접 조회한 결과를 옮기거나 학교에서 제공받은 파일을 사용합니다.
+
+### 1. 표를 파일로 옮기기
+
+1. 학교 '수업시간표 및 강의계획서 조회' 화면에서 필요한 학과·교양을 조회합니다.
+2. 결과 표를 열 제목까지 포함해 엑셀에 붙여넣고 `.xlsx` 또는 `.csv`로 저장합니다.
+3. 여러 번 조회했다면 한 시트에 이어 붙입니다. 같은 강좌번호는 한 번만 남습니다.
+
+최소한 `강좌번호`, `교과목명`, `학점` 열이 있어야 하고, 시간 충돌 검사를 하려면 `강의시간` 또는 `강의시간(실제시간)` 열이 필요합니다. 열 순서는 상관없습니다.
+
+### 2. JSON으로 변환
+
+`backend` 폴더에서 가상환경을 켠 상태로 실행합니다.
+
+```bash
+python -m scripts.convert_courses 저장한파일.xlsx
+```
+
+`app/data/courses.json`이 만들어지고, 해석하지 못한 줄이 있으면 경고로 알려 줍니다.
+
+### 샘플 데이터
+
+`app/data/courses.sample.csv`와 `courses.sample.json`은 형식을 보여 주는 **가짜 데이터**입니다. 실제 데이터가 준비되기 전까지 개발과 테스트에 씁니다.
+
+### 테스트
+
+```bash
+python -m pytest
+```
 
 ## 협업 규칙
 
