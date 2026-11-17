@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import { affiliations, computingMajors, entryPaths, otherMajorOptions, exchangeOptions, recognitionOptions, changeAffiliation, getStudentGuidance, type StudentProfile } from "../lib/student-profile";
 import { Icon } from "./icons";
 
@@ -14,6 +14,7 @@ export function StudentProfileCard({ profile, onChange }: { profile: StudentProf
     {profile.affiliation && <>
       <fieldset className="major-picker"><legend>{primary ? "소속 전공" : "관심·이수 전공 (모르면 선택하지 않아도 돼요)"}</legend><div>{computingMajors.map(major => <label key={major.id} className={profile.majorId === major.id ? "is-selected" : ""}><input type="radio" name="student-major" value={major.id} checked={profile.majorId === major.id} onChange={() => update("majorId", major.id)} /><strong>{major.short}</strong><small>{major.name}</small></label>)}</div></fieldset>
       <div className="document-fields">
+        <label className="document-field">현재 학년<select value={profile.currentGrade} onChange={e => update("currentGrade", e.target.value)}><option value="">학년 선택</option>{["1", "2", "3", "4"].map(grade => <option key={grade} value={grade}>{grade}학년</option>)}</select></label>
         {primary ? <label className="document-field">입학·컴학 진입 경로<select value={profile.entryPath} onChange={e => update("entryPath", e.target.value)}><option value="">경로 선택</option>{entryPaths.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : <label className="document-field">{incoming ? "본교·소속 대학" : "주전공 학과"}<input maxLength={100} value={profile.homeDepartment} placeholder={incoming ? "예: 소속 대학 이름" : "예: 전자공학부"} onChange={e => update("homeDepartment", e.target.value)} /></label>}
         <label className="document-field">{incoming ? "방문 학년도" : "최초 입학 연도"}<input type="text" inputMode="numeric" maxLength={4} pattern="(19|20)[0-9]{2}" placeholder="예: 2024" value={profile.admissionYear} onChange={e => update("admissionYear", e.target.value.replace(/\D/g, "").slice(0, 4))} /></label>
         {!incoming && <label className="document-field">적용 교육과정 연도 (확인된 경우)<input type="text" inputMode="numeric" maxLength={4} pattern="(19|20)[0-9]{2}" placeholder="입학 연도와 다를 수 있어요" value={profile.curriculumYear} onChange={e => update("curriculumYear", e.target.value.replace(/\D/g, "").slice(0, 4))} /></label>}

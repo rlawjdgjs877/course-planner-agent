@@ -1,4 +1,4 @@
-﻿export const computingMajors = [
+export const computingMajors = [
   { id: "advanced", short: "심컴", name: "심화컴퓨팅전공" },
   { id: "ai", short: "인컴", name: "인공지능컴퓨팅전공" },
   { id: "research", short: "첨컴", name: "첨단컴퓨팅연구전공" },
@@ -36,12 +36,12 @@ export const recognitionOptions = [
   { id: "approved", name: "학점 인정 완료" },
 ];
 export type StudentProfile = {
-  affiliation: string; majorId: string; entryPath: string; admissionYear: string; curriculumYear: string;
+  affiliation: string; majorId: string; currentGrade: string; entryPath: string; admissionYear: string; curriculumYear: string;
   homeDepartment: string; otherMajor: string; otherDepartment: string;
   exchange: string; recognition: string; hostUniversity: string; incomingOrigin: string;
 };
 export const emptyStudentProfile: StudentProfile = {
-  affiliation: "", majorId: "", entryPath: "", admissionYear: "", curriculumYear: "", homeDepartment: "",
+  affiliation: "", majorId: "", currentGrade: "", entryPath: "", admissionYear: "", curriculumYear: "", homeDepartment: "",
   otherMajor: "none", otherDepartment: "", exchange: "none", recognition: "pending", hostUniversity: "", incomingOrigin: "",
 };
 export function restoreStudentProfile(input: unknown): StudentProfile {
@@ -49,7 +49,7 @@ export function restoreStudentProfile(input: unknown): StudentProfile {
   const data = input as Record<string, unknown>;
   const result = { ...emptyStudentProfile };
   const choices: Partial<Record<keyof StudentProfile, string[]>> = {
-    affiliation: affiliations.map(x => x.id), majorId: computingMajors.map(x => x.id), entryPath: entryPaths.map(x => x.id),
+    currentGrade: ["1", "2", "3", "4"], affiliation: affiliations.map(x => x.id), majorId: computingMajors.map(x => x.id), entryPath: entryPaths.map(x => x.id),
     otherMajor: otherMajorOptions.map(x => x.id), exchange: exchangeOptions.map(x => x.id), recognition: recognitionOptions.map(x => x.id), incomingOrigin: ["domestic", "overseas"],
   };
   for (const key of Object.keys(result) as (keyof StudentProfile)[]) {
