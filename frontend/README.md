@@ -1,4 +1,4 @@
-﻿# Campus Finder 프론트엔드
+# Plann 프론트엔드
 
 경북대학교 컴퓨터학부 학생을 위한 Finder 스타일의 학업 관리 화면입니다.
 Next.js App Router, TypeScript, Tailwind CSS로 구현했습니다.
