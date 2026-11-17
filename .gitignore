@@ -3,6 +3,10 @@
 .env.*
 !.env.example
 
+# 데이터베이스 파일 (app/data 의 JSON 원본에서 자동으로 만들어진다)
+*.db
+*.db-journal
+
 # Python 가상환경
 .venv/
 venv/

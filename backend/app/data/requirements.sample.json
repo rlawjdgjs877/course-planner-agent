@@ -1,0 +1,16 @@
+[
+  {
+    "department": "샘플학부",
+    "admission_year": 2024,
+    "total_credits": 130,
+    "credits": {
+      "전공필수": 30,
+      "전공선택": 36,
+      "교양": 30
+    },
+    "required_courses": [
+      { "course_code": "SAMP0201", "name": "자료구조(샘플)" },
+      { "course_code": "SAMP0301", "name": "운영체제(샘플)" }
+    ]
+  }
+]

@@ -13,6 +13,7 @@ backend/
     services/      # 성적표 파싱, 졸업 요건 계산, 시간표 조회
     data/          # 시간표, 졸업 요건 데이터
     schemas.py     # 과목 데이터 형식
+    db.py          # 데이터베이스 테이블과 읽기·쓰기
   scripts/         # 데이터 변환 스크립트
   tests/           # 테스트
   requirements.txt
@@ -145,9 +146,59 @@ AI는 사용자의 말을 이해해 **조건만** 고치고, 시간표는 `POST 
 
 `backend/.env`에 `OPENAI_API_KEY`와 `OPENAI_MODEL`이 둘 다 있어야 동작합니다. 없으면 503과 함께 안내 문구를 돌려줍니다. 관련 코드는 `backend/app/agent/chat.py`에 있습니다.
 
+## 데이터베이스
+
+개설 강좌와 졸업 요건은 SQLite 데이터베이스(`backend/app/data/planner.db`)에 들어 있습니다. SQLite는 파일 하나가 곧 데이터베이스라서 따로 설치하거나 켤 것이 없습니다.
+
+| 테이블 | 내용 |
+|---|---|
+| `courses` | 개설 강좌 (분반 단위): 강좌번호, 과목명, 교과구분, 학점, 교수, 강의실, 정원 등 |
+| `meetings` | 강좌별 수업 시간: 요일, 시작, 종료. 주 2회 수업이면 두 줄 |
+| `programs` | 학과·입학연도별 졸업 총 학점 |
+| `credit_requirements` | 영역(교과구분)별 최소 학점 |
+| `required_courses` | 꼭 들어야 하는 과목 |
+
+테이블 정의와 읽고 쓰는 코드는 `backend/app/db.py`에 있습니다.
+
+**DB 파일은 git에 올리지 않습니다.** 서버가 처음 DB에 연결할 때 테이블을 만들고, 비어 있으면 `app/data`의 원본 파일로 채웁니다.
+
+- `courses.json`, `requirements.json`이 있으면 그것으로 채웁니다.
+- 없으면 가짜 샘플(`courses.sample.json`, `requirements.sample.json`)로 채웁니다.
+
+그래서 팀원은 `git pull`만 하고 서버를 켜면 같은 DB가 만들어집니다. DB를 처음부터 다시 만들고 싶으면 `planner.db` 파일을 지우고 서버를 다시 켭니다.
+
+### 자료 넣기
+
+`backend` 폴더에서 가상환경을 켠 상태로 실행합니다.
+
+```bash
+python -m scripts.import_data courses 저장한파일.xlsx
+```
+
+```bash
+python -m scripts.import_data requirements 졸업요건.json
+```
+
+```bash
+python -m scripts.import_data status
+```
+
+- `courses`: 엑셀, CSV, JSON을 읽어 강좌를 넣습니다. 같은 연도·학기의 기존 강좌는 새 것으로 바뀌고, 가짜 샘플이 들어 있었다면 지워집니다.
+- `requirements`: 졸업 요건을 넣습니다. 형식은 `app/data/requirements.sample.json`을 따릅니다.
+- `status`: 지금 들어 있는 자료의 개수를 보여 줍니다.
+
+넣은 자료는 `app/data/courses.json`, `requirements.json`으로도 저장됩니다. **이 JSON 파일을 커밋해서 올려야** 팀원에게 같은 자료가 전달됩니다.
+
+### 조회 API
+
+| 주소 | 설명 |
+|---|---|
+| `GET /courses?q=자료&category=교양&department=컴퓨터학부` | 강좌 검색. 조건은 모두 선택 사항 |
+| `GET /requirements?department=컴퓨터학부&admission_year=2024` | 졸업 요건 |
+
 ## 과목 데이터 만들기 (데이터 담당)
 
-에이전트는 `backend/app/data/courses.json`에서 개설 강좌를 찾습니다. 데이터 형식은 `backend/app/schemas.py`의 `Course`입니다.
+데이터 형식은 `backend/app/schemas.py`의 `Course`입니다.
 
 학교 시간표 사이트는 `robots.txt`로 자동 수집을 금지하고 있습니다. **프로그램으로 긁어 오지 말고**, 사람이 직접 조회한 결과를 옮기거나 학교에서 제공받은 파일을 사용합니다.
 
@@ -159,15 +210,15 @@ AI는 사용자의 말을 이해해 **조건만** 고치고, 시간표는 `POST 
 
 최소한 `강좌번호`, `교과목명`, `학점` 열이 있어야 하고, 시간 충돌 검사를 하려면 `강의시간` 또는 `강의시간(실제시간)` 열이 필요합니다. 열 순서는 상관없습니다.
 
-### 2. JSON으로 변환
+### 2. 데이터베이스에 넣기
 
 `backend` 폴더에서 가상환경을 켠 상태로 실행합니다.
 
 ```bash
-python -m scripts.convert_courses 저장한파일.xlsx
+python -m scripts.import_data courses 저장한파일.xlsx
 ```
 
-`app/data/courses.json`이 만들어지고, 해석하지 못한 줄이 있으면 경고로 알려 줍니다.
+데이터베이스에 들어가고 `app/data/courses.json`도 함께 만들어집니다. 해석하지 못한 줄이 있으면 경고로 알려 줍니다. `courses.json`을 커밋해서 올리면 팀원도 같은 과목을 쓰게 됩니다.
 
 ### 샘플 데이터
 

@@ -54,6 +54,30 @@ class CourseList(BaseModel):
     courses: list[Course]
 
 
+class RequiredCourse(BaseModel):
+    course_code: str = Field(description="교과목코드")
+    name: str = Field(description="교과목명")
+
+
+class GraduationRequirement(BaseModel):
+    """졸업 요건. 학과와 입학연도마다 하나."""
+
+    department: str = Field(description="학과")
+    admission_year: int = Field(description="입학연도")
+    total_credits: float = Field(description="졸업에 필요한 총 학점")
+    credits: dict[str, float] = Field(
+        default_factory=dict, description="영역(교과구분)별 최소 학점. 예: {'전공필수': 30}"
+    )
+    required_courses: list[RequiredCourse] = Field(
+        default_factory=list, description="꼭 들어야 하는 과목"
+    )
+
+
+class RequirementList(BaseModel):
+    sample: bool = Field(description="가짜 샘플 데이터인지")
+    requirements: list[GraduationRequirement]
+
+
 class TimeBlock(BaseModel):
     """수업을 넣으면 안 되는 시간대. 예: 금요일 전체, 매일 09:00~10:00"""
 
