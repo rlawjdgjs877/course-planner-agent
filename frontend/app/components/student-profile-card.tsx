@@ -1,0 +1,29 @@
+﻿"use client";
+import { affiliations, computingMajors, entryPaths, otherMajorOptions, exchangeOptions, recognitionOptions, changeAffiliation, getStudentGuidance, type StudentProfile } from "../lib/student-profile";
+import { Icon } from "./icons";
+
+export function StudentProfileCard({ profile, onChange }: { profile: StudentProfile; onChange: (value: StudentProfile) => void }) {
+  const update = (key: keyof StudentProfile, value: string) => onChange({ ...profile, [key]: value });
+  const primary = profile.affiliation === "primary";
+  const incoming = profile.affiliation === "incoming";
+  const showExchange = profile.affiliation && !incoming;
+  return <section className="student-profile" aria-labelledby="student-profile-title">
+    <div className="document-heading"><div><span className="step-label">MY ACADEMIC PROFILE</span><h2 id="student-profile-title">나의 컴학 생활</h2></div><span className="document-badge">이 브라우저에 저장</span></div>
+    <p className="document-description">컴퓨터학부생을 위한 학업 공간입니다. 주전공, 진입 경로, 다른 전공과 교환학점 이력을 함께 구분해요.</p>
+    <fieldset className="student-affiliations"><legend>컴퓨터학부와의 관계</legend><div>{affiliations.map(item => <label key={item.id} className={profile.affiliation === item.id ? "is-selected" : ""}><input type="radio" name="student-affiliation" value={item.id} checked={profile.affiliation === item.id} onChange={() => onChange(changeAffiliation(profile, item.id))} /><strong>{item.name}</strong><small>{item.description}</small></label>)}</div></fieldset>
+    {profile.affiliation && <>
+      <fieldset className="major-picker"><legend>{primary ? "소속 전공" : "관심·이수 전공 (모르면 선택하지 않아도 돼요)"}</legend><div>{computingMajors.map(major => <label key={major.id} className={profile.majorId === major.id ? "is-selected" : ""}><input type="radio" name="student-major" value={major.id} checked={profile.majorId === major.id} onChange={() => update("majorId", major.id)} /><strong>{major.short}</strong><small>{major.name}</small></label>)}</div></fieldset>
+      <div className="document-fields">
+        {primary ? <label className="document-field">입학·컴학 진입 경로<select value={profile.entryPath} onChange={e => update("entryPath", e.target.value)}><option value="">경로 선택</option>{entryPaths.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : <label className="document-field">{incoming ? "본교·소속 대학" : "주전공 학과"}<input maxLength={100} value={profile.homeDepartment} placeholder={incoming ? "예: 소속 대학 이름" : "예: 전자공학부"} onChange={e => update("homeDepartment", e.target.value)} /></label>}
+        <label className="document-field">{incoming ? "방문 학년도" : "최초 입학 연도"}<input type="text" inputMode="numeric" maxLength={4} pattern="(19|20)[0-9]{2}" placeholder="예: 2024" value={profile.admissionYear} onChange={e => update("admissionYear", e.target.value.replace(/\D/g, "").slice(0, 4))} /></label>
+        {!incoming && <label className="document-field">적용 교육과정 연도 (확인된 경우)<input type="text" inputMode="numeric" maxLength={4} pattern="(19|20)[0-9]{2}" placeholder="입학 연도와 다를 수 있어요" value={profile.curriculumYear} onChange={e => update("curriculumYear", e.target.value.replace(/\D/g, "").slice(0, 4))} /></label>}
+        {primary && <label className="document-field">타 학과 복수·부전공<select value={profile.otherMajor} onChange={e => onChange({ ...profile, otherMajor: e.target.value, otherDepartment: "" })}>{otherMajorOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
+        {primary && profile.otherMajor !== "none" && <label className="document-field">함께 이수하는 타 학과<input value={profile.otherDepartment} maxLength={100} placeholder="예: 경영학부" onChange={e => update("otherDepartment", e.target.value)} /></label>}
+        {incoming && <label className="document-field">교환 파견 대학 구분<select value={profile.incomingOrigin} onChange={e => update("incomingOrigin", e.target.value)}><option value="">구분 선택</option><option value="overseas">해외 대학에서 온 교환학생</option><option value="domestic">국내 타 대학에서 온 교류학생</option></select></label>}
+      </div>
+      {showExchange && <div className="student-exchange"><h3><Icon name="book" size={16} />교환학생·타 대학 학점교류</h3><p>현재 소속과 별개로, 타 대학에서 과목을 이수한 경험을 기록해요.</p><div className="document-fields"><label className="document-field">타 대학 이수 이력<select value={profile.exchange} onChange={e => onChange({ ...profile, exchange: e.target.value, recognition: "pending", hostUniversity: "" })}>{exchangeOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>{profile.exchange !== "none" && <><label className="document-field">학점 인정 상태<select value={profile.recognition} onChange={e => update("recognition", e.target.value)}>{recognitionOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className="document-field">과목을 이수한 타 대학<input value={profile.hostUniversity} maxLength={100} placeholder="대학 이름 (선택)" onChange={e => update("hostUniversity", e.target.value)} /></label></>}</div></div>}
+      <div className="student-summary" aria-live="polite"><span>{affiliations.find(a => a.id === profile.affiliation)?.name}</span>{profile.majorId && <span>{computingMajors.find(m => m.id === profile.majorId)?.short}</span>}{primary && profile.entryPath && <span>{entryPaths.find(p => p.id === profile.entryPath)?.name}</span>}{primary && profile.otherMajor !== "none" && <span>{otherMajorOptions.find(p => p.id === profile.otherMajor)?.name}</span>}{showExchange && profile.exchange !== "none" && <span>{exchangeOptions.find(p => p.id === profile.exchange)?.name}</span>}</div>
+    </>}
+    <div className="student-guidance"><Icon name="info" size={17} /><div><strong>내 상황에서 확인할 내용</strong><ul>{getStudentGuidance(profile).map(note => <li key={note}>{note}</li>)}</ul></div></div>
+  </section>;
+}
