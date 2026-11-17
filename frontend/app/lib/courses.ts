@@ -259,10 +259,10 @@ export const courses: Course[] = [
   {
     "id": "knu-33",
     "name": "대규모병렬컴퓨팅",
-    "year": 0,
-    "category": "문서 수록 과목",
-    "credits": null,
-    "semester": "학기 미기재"
+    "year": 4,
+    "category": "공학전공",
+    "credits": 3,
+    "semester": "2026년 2학기 · ITEC0418-001"
   },
   {
     "id": "knu-34",
