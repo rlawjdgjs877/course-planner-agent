@@ -6,3 +6,5 @@ from pathlib import Path
 
 _folder = tempfile.mkdtemp(prefix="planner-test-")
 os.environ["PLANNER_DB"] = str(Path(_folder) / "test.db")
+# 테스트는 실제 개설 강좌가 아니라 항상 가짜 샘플로 돌린다 (결과가 자료에 따라 바뀌지 않게).
+os.environ["PLANNER_SEED"] = "sample"

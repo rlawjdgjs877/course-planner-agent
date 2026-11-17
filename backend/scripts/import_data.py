@@ -4,6 +4,7 @@
 
     python -m scripts.import_data courses 시간표.xlsx        강좌 넣기 (.xlsx .csv .tsv .txt .json)
     python -m scripts.import_data requirements 요건.json     졸업 요건 넣기
+    python -m scripts.import_data offerings ../frontend/data/course-sources   학교 조회 응답(JSON) 폴더나 파일 넣기
     python -m scripts.import_data status                     지금 들어 있는 자료 확인
 
 강좌는 같은 연도·학기의 기존 강좌를 새 것으로 바꾼다. 가짜 샘플이 들어 있었다면 지우고 넣는다.
@@ -18,6 +19,7 @@ from pathlib import Path
 
 from app import db
 from app.schemas import Course, GraduationRequirement
+from app.services.knu_offerings import courses_from_school_json
 from scripts.convert_courses import convert, read_rows
 
 
@@ -53,6 +55,8 @@ def main() -> None:
     for name, help_text in (("courses", "강좌 넣기"), ("requirements", "졸업 요건 넣기")):
         command = commands.add_parser(name, help=help_text)
         command.add_argument("file", type=Path, help="넣을 파일")
+    offerings = commands.add_parser("offerings", help="학교 수업시간표 조회 응답(JSON) 넣기")
+    offerings.add_argument("paths", type=Path, nargs="+", help="JSON 파일이나 그 파일들이 든 폴더")
     commands.add_parser("status", help="들어 있는 자료 확인")
     args = parser.parse_args()
 
@@ -64,6 +68,18 @@ def main() -> None:
             count = db.replace_courses(connection, courses)
             saved = db.fetch_courses(connection)
         print(f"강좌 {count}개를 넣었습니다. 원본 저장: {save_json('courses.json', saved)}")
+        for warning in warnings:
+            print(f"  - {warning}", file=sys.stderr)
+
+    elif args.command == "offerings":
+        files = [f for path in args.paths for f in (sorted(path.glob("*.json")) if path.is_dir() else [path])]
+        courses, warnings = courses_from_school_json(files)
+        if not courses:
+            raise SystemExit("넣을 강좌가 없습니다. 파일 경로를 확인하세요.")
+        with db.connect() as connection:
+            count = db.replace_courses(connection, courses)
+            saved = db.fetch_courses(connection)
+        print(f"파일 {len(files)}개에서 강좌 {count}개를 넣었습니다. 원본 저장: {save_json('courses.json', saved)}")
         for warning in warnings:
             print(f"  - {warning}", file=sys.stderr)
 

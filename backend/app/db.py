@@ -13,7 +13,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from app.schemas import Course, GraduationRequirement, Meeting, RequiredCourse
+from app.schemas import Course, CourseListing, GraduationRequirement, Meeting, RequiredCourse
 
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -60,6 +60,17 @@ CREATE TABLE IF NOT EXISTS meetings (
     end_time   TEXT    NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_meetings_course ON meetings (course_pk);
+
+-- 같은 분반이 여러 자료(트랙, 교양 영역)에 다른 이수구분·학년으로 올라 있을 수 있다.
+CREATE TABLE IF NOT EXISTS course_listings (
+    id         INTEGER PRIMARY KEY,
+    course_pk  INTEGER NOT NULL REFERENCES courses (id) ON DELETE CASCADE,
+    source     TEXT    NOT NULL,
+    category   TEXT    NOT NULL,
+    grade      TEXT,
+    department TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_listings_course ON course_listings (course_pk);
 
 -- 졸업 요건: 학과와 입학연도마다 하나
 CREATE TABLE IF NOT EXISTS programs (
@@ -127,14 +138,25 @@ def connect() -> Iterator[sqlite3.Connection]:
         connection.close()
 
 
+def _use_sample_only() -> bool:
+    """PLANNER_SEED=sample 이면 실제 자료가 있어도 가짜 샘플로 채운다 (테스트용)."""
+    return os.environ.get("PLANNER_SEED", "").strip().lower() == "sample"
+
+
 def _seed(connection: sqlite3.Connection) -> None:
-    """비어 있는 테이블을 원본 파일로 채운다. 실제 파일이 없으면 가짜 샘플을 쓴다."""
-    if connection.execute("SELECT 1 FROM courses LIMIT 1").fetchone() is None:
-        real = DATA_DIR / "courses.json"
-        source = real if real.exists() else DATA_DIR / "courses.sample.json"
+    """비어 있는 테이블을 원본 파일로 채운다. 실제 파일이 없으면 가짜 샘플을 쓴다.
+
+    가짜 샘플이 들어 있던 DB 에 실제 자료(courses.json)가 새로 생기면 실제 자료로 바꾼다.
+    """
+    real = DATA_DIR / "courses.json"
+    use_real = real.exists() and not _use_sample_only()
+    empty = connection.execute("SELECT 1 FROM courses LIMIT 1").fetchone() is None
+    holding_sample = get_meta(connection, "courses_sample") != "0"
+    if empty or (use_real and holding_sample):
+        source = real if use_real else DATA_DIR / "courses.sample.json"
         if source.exists():
             items = json.loads(source.read_text(encoding="utf-8"))
-            replace_courses(connection, [Course(**item) for item in items], sample=source != real)
+            replace_courses(connection, [Course(**item) for item in items], sample=not use_real)
 
     if connection.execute("SELECT 1 FROM programs LIMIT 1").fetchone() is None:
         real = DATA_DIR / "requirements.json"
@@ -185,6 +207,10 @@ def replace_courses(connection: sqlite3.Connection, courses: list[Course], sampl
             "INSERT INTO meetings (course_pk, day, start_time, end_time) VALUES (?, ?, ?, ?)",
             [(cursor.lastrowid, m.day, m.start, m.end) for m in course.meetings],
         )
+        connection.executemany(
+            "INSERT INTO course_listings (course_pk, source, category, grade, department) VALUES (?, ?, ?, ?, ?)",
+            [(cursor.lastrowid, x.source, x.category, x.grade, x.department) for x in course.listings],
+        )
     _set_meta(connection, "courses_sample", "1" if sample else "0")
     # 강좌가 바뀔 때마다 새 표식을 찍는다. 읽어 둔 강좌가 아직 최신인지 이것으로 판단한다.
     _set_meta(connection, "courses_version", uuid.uuid4().hex)
@@ -220,8 +246,19 @@ def fetch_courses(
         meetings[row["course_pk"]].append(
             Meeting(day=row["day"], start=row["start_time"], end=row["end_time"])
         )
+    listings: dict[int, list[CourseListing]] = defaultdict(list)
+    for row in connection.execute(
+        "SELECT course_pk, source, category, grade, department FROM course_listings ORDER BY id"
+    ):
+        listings[row["course_pk"]].append(
+            CourseListing(source=row["source"], category=row["category"], grade=row["grade"], department=row["department"])
+        )
     return [
-        Course(**{column: row[column] for column in COURSE_COLUMNS}, meetings=meetings[row["id"]])
+        Course(
+            **{column: row[column] for column in COURSE_COLUMNS},
+            meetings=meetings[row["id"]],
+            listings=listings[row["id"]],
+        )
         for row in rows
     ]
 

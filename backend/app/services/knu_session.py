@@ -49,6 +49,8 @@ WAIT_AFTER_MENU = 0.6  # 상위 메뉴를 누른 뒤 하위 메뉴가 그려지�
 WAIT_AFTER_TARGET = 1.5  # 이수성적 조회를 연 뒤 학교가 스스로 목록을 보내는지 기다리는 시간(초)
 WAIT_AFTER_QUERY = 3.0  # 조회 버튼을 누른 뒤 응답을 기다리는 시간(초)
 PARENT_RETRY = 15.0  # 상위 메뉴를 누르고 이만큼 지나도 못 찾으면 다시 눌러 본다
+SETTLE_AFTER_NAVIGATION = 1.0  # 화면이 바뀐 뒤 다 그려지기를 기다리는 시간(초)
+NOTICE_SECONDS = 4.0  # 중요한 안내를 보여 주는 최소 시간
 BROWSER_KEEP_SECONDS = 600  # 마지막 연결이 끝나도 Chrome 을 이만큼 켜 두어 다음 시작을 빠르게 한다
 REAP_INTERVAL = 15.0
 
@@ -129,6 +131,8 @@ class KnuSession:
     target_clicks: int = 0
     query_clicks: int = 0
     wait_until: float = 0.0  # 이 시각까지는 방금 누른 것의 결과를 기다린다
+    notice_until: float = 0.0  # 이 시각까지는 중요한 안내를 진행 문구로 덮지 않는다
+    last_navigation: float = 0.0  # 마지막으로 화면(페이지)이 바뀐 시각
     nav_task: asyncio.Task | None = None
     last_frame: bytes | None = None
     frame_id: str | None = None
@@ -328,6 +332,7 @@ class KnuSessionManager:
         if host_allowed(host, cfg.allowed_hosts):
             return False
         session.status = f"학교 밖 주소({host})로 이동해서 이전 화면으로 되돌렸습니다."
+        session.notice_until = time.monotonic() + NOTICE_SECONDS
         return True
 
     async def _guard_page(self, session: KnuSession, cfg: Settings, page: Any) -> None:
@@ -341,7 +346,10 @@ class KnuSessionManager:
 
     def _after_navigation(self, session: KnuSession, cfg: Settings, page: Any, frame: Any) -> None:
         """화면이 학교 밖 주소로 바뀌었으면 되돌린다."""
-        if session.closed or frame != page.main_frame or not self._blocked(session, cfg, frame.url):
+        if session.closed or frame != page.main_frame:
+            return
+        session.last_navigation = time.monotonic()
+        if not self._blocked(session, cfg, frame.url):
             return
         asyncio.ensure_future(self._leave(session, page))
 
@@ -403,12 +411,14 @@ class KnuSessionManager:
         now = time.monotonic()
         if now < session.wait_until:
             return False  # 방금 누른 것의 결과를 기다린다
+        if now - session.last_navigation < SETTLE_AFTER_NAVIGATION:
+            return False  # 화면이 막 바뀌어 아직 그리는 중일 수 있다 (로그인 칸이 늦게 나타나는 경우)
 
         # 비밀번호 칸이 보이면 아직 로그인 전이다. 로그인 화면의 메뉴를 미리 누르지 않는다.
         page, _ = await self._find(session, lambda frame: frame.locator("input[type=password]"))
         if page is not None:
             if not session.target_clicks:
-                session.status = "학교 화면에서 로그인해 주세요. 로그인하면 이수성적 조회까지 자동으로 이동합니다."
+                self._info(session, "학교 화면에서 로그인해 주세요. 로그인하면 이수성적 조회까지 자동으로 이동합니다.")
             return False
 
         # 이수성적 조회 화면을 열었는데 응답이 없으면 '조회' 버튼을 누른다.
@@ -443,8 +453,14 @@ class KnuSessionManager:
             return False
 
         if not session.target_clicks:
-            session.status = "이수성적 조회 메뉴를 찾고 있습니다. 화면에 보이면 직접 눌러도 됩니다."
+            self._info(session, "이수성적 조회 메뉴를 찾고 있습니다. 화면에 보이면 직접 눌러도 됩니다.")
         return False
+
+    @staticmethod
+    def _info(session: KnuSession, text: str) -> None:
+        """기다리는 중이라는 문구. 막 보여 준 중요한 안내(학교 밖 이동 등)는 덮지 않는다."""
+        if time.monotonic() >= session.notice_until:
+            session.status = text
 
     async def _auto_navigate(self, session: KnuSession) -> None:
         # 메뉴가 보이지 않는 동안(로그인, 추가 인증 중)에는 기다리기만 한다.

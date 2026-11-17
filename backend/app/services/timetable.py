@@ -80,16 +80,35 @@ def _time_mask(course: Course) -> int:
     return mask
 
 
-def summarize(
-    courses: list[Course],
-    preferred_free_days: list[str] | None = None,
-    prefer_courses: list[str] | None = None,
-) -> Timetable:
+def course_bonus(course: Course, request: TimetableRequest | None, avoid_mask: int = 0) -> float:
+    """과목 하나가 '가능하면' 조건을 얼마나 지키는지. 시간표 점수에 더한다."""
+    if request is None:
+        return 0.0
+    bonus = request.section_bonus.get(course.course_id, 0.0)
+    if course.course_id in request.prefer_courses:
+        bonus += 4  # 지금 시간표에 있던 과목은 유지
+    if course.professor and any(name and name in course.professor for name in request.prefer_professors):
+        bonus += 2
+    if course.area and any(area and area in course.area for area in request.prefer_areas):
+        bonus += 3
+    if avoid_mask and _time_mask(course) & avoid_mask:
+        bonus -= 3  # 피하고 싶은 시간에 수업이 있다
+    return bonus
+
+
+def credits_score(credits: float, target: float | None) -> float:
+    """목표 학점이 없으면 많을수록, 있으면 목표에 가까울수록 높다."""
+    return credits if target is None else target - 2 * abs(credits - target)
+
+
+def summarize(courses: list[Course], request: TimetableRequest | None = None) -> Timetable:
     """과목 목록의 학점 합, 공강 요일, 빈 시간, 점수를 계산한다.
 
-    점수는 공강 희망 요일 > 유지하고 싶은 강좌 > 공강 요일 수 > 학점 > 수업 사이 빈 시간
-    순으로 반영한다.
+    점수는 공강 희망 요일 > 유지하고 싶은 강좌, 선호 교수·영역, 피할 시간 > 공강 요일 수
+    > 학점 > 수업 사이 빈 시간 순으로 반영한다.
     """
+    preferred_free_days = request.preferred_free_days if request else []
+    avoid_mask = _block_mask(request.avoid_times) if request else 0
     credits_by_category: dict[str, float] = defaultdict(float)
     by_day: dict[str, list[tuple[int, int]]] = defaultdict(list)
     for course in courses:
@@ -106,9 +125,10 @@ def summarize(
 
     total_credits = sum(course.credits for course in courses)
     free_days = [day for day in WEEKDAYS if day not in by_day]
-    preferred_met = sum(1 for day in preferred_free_days or [] if day not in by_day)
-    kept = sum(1 for course in courses if course.course_id in (prefer_courses or []))
-    score = 10 * preferred_met + 4 * kept + 2 * len(free_days) + total_credits - gap_minutes / 60
+    preferred_met = sum(1 for day in preferred_free_days if day not in by_day)
+    bonus = sum(course_bonus(course, request, avoid_mask) for course in courses)
+    target = request.target_credits if request else None
+    score = 10 * preferred_met + bonus + 2 * len(free_days) + credits_score(total_credits, target) - gap_minutes / 60
 
     return Timetable(
         courses=sorted(courses, key=lambda course: course.course_id),
@@ -191,18 +211,30 @@ def generate_timetables(courses: list[Course], request: TimetableRequest) -> Tim
     ]
     kept_ids = set(request.prefer_courses)
     is_kept = [course.course_id in kept_ids for course in pool]
+    avoid_mask = _block_mask(request.avoid_times)
+    bonus_of = [course_bonus(course, request, avoid_mask) for course in pool]
+    day_bits_of = [sum({1 << DAYS.index(m.day) for m in course.meetings}) for course in pool]
+    weekday_bits = [1 << day for day in range(len(WEEKDAYS))]
     preferred_days = [DAYS.index(day) for day in request.preferred_free_days if day in DAYS]
     needed = {category: need for category, need in request.required_credits.items() if need > 0}
     must = [by_code[code] for code in sorted(must_codes)]
     optional_codes = sorted(code for code in by_code if code not in must_codes)
 
+    preferred_bits = [1 << day for day in preferred_days]
+
+    def rough_score(days: int, bonus: float, credits: float) -> float:
+        """빈 시간을 뺀 점수. 탐색 중 조합마다 계산해야 해서 가볍게 만든다."""
+        free = sum(1 for bit in weekday_bits if not days & bit)
+        met = sum(1 for bit in preferred_bits if not days & bit)
+        return 10 * met + bonus + 2 * free + credits_score(credits, request.target_credits)
+
     def quick_score(chosen: list[int]) -> float:
-        """summarize 와 같은 점수를, 탐색 중에 쓸 수 있도록 가볍게 계산한다."""
+        """summarize 와 같은 점수 (빈 시간 포함)."""
         by_day: dict[int, list[tuple[int, int]]] = {}
-        credits, kept = 0.0, 0
+        credits, bonus = 0.0, 0.0
         for index in chosen:
             credits += credits_of[index]
-            kept += is_kept[index]
+            bonus += bonus_of[index]
             for day, start, end in slots_of[index]:
                 by_day.setdefault(day, []).append((start, end))
         gap = 0
@@ -212,7 +244,7 @@ def generate_timetables(courses: list[Course], request: TimetableRequest) -> Tim
                 gap += sum(max(0, later[0] - earlier[1]) for earlier, later in zip(slots, slots[1:]))
         free = sum(1 for day in range(len(WEEKDAYS)) if day not in by_day)
         met = sum(1 for day in preferred_days if day not in by_day)
-        return 10 * met + 4 * kept + 2 * free + credits - gap / 60
+        return 10 * met + bonus + 2 * free + credits_score(credits, request.target_credits) - gap / 60
 
     found: dict[frozenset[int], float] = {}
     state = {"nodes": 0, "limit": 0}
@@ -225,6 +257,8 @@ def generate_timetables(courses: list[Course], request: TimetableRequest) -> Tim
         used: int,
         credits: float,
         by_category: dict[str, float],
+        days: int = 0,
+        bonus: float = 0.0,
     ) -> None:
         if state["nodes"] >= state["limit"]:
             return
@@ -248,12 +282,16 @@ def generate_timetables(courses: list[Course], request: TimetableRequest) -> Tim
                 used | masks[index],
                 credits + credits_of[index],
                 by_category,
+                days | day_bits_of[index],
+                bonus + bonus_of[index],
             )
             by_category[category] -= credits_of[index]
             chosen.pop()
 
         if level < len(must):  # 꼭 넣을 과목은 건너뛸 수 없다
             for index in must[level]:
+                if state["nodes"] >= state["limit"]:
+                    return
                 if credits_of[index] <= room and not masks[index] & used:
                     pick(index, level + 1, start)
             return
@@ -261,10 +299,12 @@ def generate_timetables(courses: list[Course], request: TimetableRequest) -> Tim
         if credits >= request.min_credits and deficit == 0:
             key = frozenset(chosen)
             if key not in found:
-                found[key] = quick_score(chosen)
+                found[key] = rough_score(days, bonus, credits)
 
         chosen_codes = {code_of[index] for index in chosen}
         for position in range(start, len(order)):
+            if state["nodes"] >= state["limit"]:
+                return  # 한도에 닿으면 남은 후보를 하나씩 확인하지 않고 바로 멈춘다
             index = order[position]
             if (
                 credits_of[index] <= room
@@ -311,6 +351,9 @@ def generate_timetables(courses: list[Course], request: TimetableRequest) -> Tim
             run(code_order, RESTART_NODES)
 
     # 4. 점수가 높은 순으로 고르되, 분반만 다르거나 한 과목만 다른 비슷한 시간표는 뒤로 미룬다.
+    # 빠른 점수로 상위 몇십 개만 고른 뒤, 빈 시간까지 따진 점수로 다시 줄 세운다.
+    shortlist = sorted(found, key=lambda key: (-found[key], sorted(key)))[: max(60, request.max_results * 20)]
+    found = {key: quick_score(list(key)) for key in shortlist}
     ranked = sorted(found, key=lambda key: (-found[key], sorted(key)))
     codes_in = {key: frozenset(code_of[index] for index in key) for key in ranked}
     selected: list[frozenset[int]] = []
@@ -327,11 +370,7 @@ def generate_timetables(courses: list[Course], request: TimetableRequest) -> Tim
 
     timetables = sorted(
         (
-            summarize(
-                [pool[index] for index in key],
-                request.preferred_free_days,
-                request.prefer_courses,
-            )
+            summarize([pool[index] for index in key], request)
             for key in selected
         ),
         key=lambda timetable: timetable.score,

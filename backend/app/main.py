@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from app.routers import chat, courses, knu_import, timetables
+from app.routers import chat, courses, knu_import, timetables, tools
 from app.services.knu_session import manager as knu_manager
 from app.settings import FRONTEND_ORIGINS
 
@@ -39,6 +39,7 @@ app.include_router(chat.router)
 app.include_router(courses.router)
 app.include_router(knu_import.router)
 app.include_router(timetables.router)
+app.include_router(tools.router)
 
 
 @app.get("/", include_in_schema=False)

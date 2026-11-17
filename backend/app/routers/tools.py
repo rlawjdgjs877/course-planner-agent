@@ -1,0 +1,24 @@
+"""에이전트 도구 정의 v3.2 를 따르는 API. 프론트엔드(Plann)와 이후 Claude 연동이 이 API 를 쓴다."""
+
+from fastapi import APIRouter, HTTPException
+
+from app.schemas import Candidate, GenerateTimetableRequest, GenerateTimetableResponse
+from app.services import planner
+from app.services.course_repository import load_courses
+
+router = APIRouter(prefix="/tools", tags=["tools (v3.2)"])
+
+
+@router.post("/generate_timetable", response_model=GenerateTimetableResponse)
+def generate_timetable(request: GenerateTimetableRequest) -> GenerateTimetableResponse:
+    """조건에 맞는 시간표 후보를 최대 3개 만든다. 일부만 지킬 수 있으면 이유와 대안을 함께 돌려준다."""
+    return planner.generate(request, load_courses())
+
+
+@router.get("/candidates/{candidate_id}", response_model=Candidate)
+def get_candidate(candidate_id: str) -> Candidate:
+    """앞서 만든 후보(tt_001, tt_alt_001 등)를 다시 가져온다. 대안을 고르면 새로 풀지 않고 이것을 쓴다."""
+    candidate = planner.store.get(candidate_id)
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="후보를 찾지 못했습니다. 서버를 다시 켜면 후보가 지워집니다.")
+    return candidate
