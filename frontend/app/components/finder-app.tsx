@@ -60,7 +60,7 @@ export default function FinderApp() {
   const navigate = (index: number) => { setSection(index); setQuery(""); setYear(null); };
   return <div className="desktop">
     <header className="desktop-bar"><span className="desktop-brand"><Icon name="book" size={17} /> Campus Finder</span><span className="desktop-menu">파일 <span>편집</span> <span>보기</span></span><span className="desktop-right">나의 대학 생활, 차곡차곡.</span></header>
-    <div className="desktop-intro"><span className="eyebrow">A LITTLE MORE ORGANIZED</span><p>대학 생활을 정리하는 가장 편안한 공간.</p></div>
+
     <div className="finder-window">
       <aside className="sidebar">
         <div className="traffic-lights" aria-hidden="true"><i /><i /><i /></div>
@@ -94,6 +94,7 @@ export default function FinderApp() {
     <p className="desktop-caption"><span className="caption-line" />복잡한 대학 생활을, 조금 더 심플하게.<span className="caption-line" /></p>
   </div>;
 }
+
 
 
 
