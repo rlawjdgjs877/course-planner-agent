@@ -46,3 +46,18 @@ PDF에 없는 과목별 학년·학점·강의 시간은 추측하지 않으며 
 - `public/documents/`: 사용자가 제공한 학업 안내 PDF 원문
 
 `node_modules`, `.next`, `.env` 및 개인의 학적·이수 기록은 저장소에 올리지 않습니다.
+
+## 2026년 2학기 JSON 개설 데이터
+
+제공받은 전공·교양 JSON 10개의 816개 조회 항목을 781개 분반, 254개 과목코드로 정리했습니다.
+PDF의 기존 과목과 합친 이수 체크 목록은 288개이며 기존 66개 과목의 저장 ID를 유지합니다.
+동일 분반의 전공별 학년·이수 구분은 자료별 기록으로 보존합니다.
+
+- 원문: `data/course-sources/*.json` (10개 파일, 원본 그대로 보존)
+- 화면용 데이터: `app/lib/data/offerings.json`, `sources.json`, `import-report.json`
+- 다시 생성: `python scripts/import-course-data.py`
+- 누락·중복 및 참조 검사: `python scripts/validate-course-data.py`
+
+강좌 검색은 전공·교양 분류, 과목·교수·강좌번호, 학년, 요일 필터와 페이지 이동을 지원합니다.
+조회 인원은 파일 생성 시점의 값이며 실시간 잔여석이 아닙니다.
+수업 시간이 없는 2개 분반은 미기재로 유지합니다. 백엔드 API 연동과 시간표 자동 생성은 아직 구현하지 않았습니다.

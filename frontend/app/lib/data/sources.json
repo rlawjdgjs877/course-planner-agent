@@ -1,0 +1,82 @@
+[
+  {
+    "id": "platform",
+    "label": "플솦",
+    "group": "전공",
+    "filename": "플솦.json",
+    "timestamp": "2026-11-16T13:17:00.371",
+    "count": 11
+  },
+  {
+    "id": "computing",
+    "label": "컴학 공통",
+    "group": "전공",
+    "filename": "컴학.json",
+    "timestamp": "2026-11-16T13:47:50.934",
+    "count": 39
+  },
+  {
+    "id": "research",
+    "label": "첨컴",
+    "group": "전공",
+    "filename": "첨컴.json",
+    "timestamp": "2026-11-16T13:15:08.524",
+    "count": 6
+  },
+  {
+    "id": "core-natural",
+    "label": "첨성인핵심 · 자연",
+    "group": "교양",
+    "filename": "첨성인핵심자연.json",
+    "timestamp": "2026-11-16T13:21:08.902",
+    "count": 182
+  },
+  {
+    "id": "core-humanities",
+    "label": "첨성인핵심 · 인문",
+    "group": "교양",
+    "filename": "첨성인핵심인문.json",
+    "timestamp": "2026-11-16T13:20:18.003",
+    "count": 122
+  },
+  {
+    "id": "literacy",
+    "label": "첨성인소양",
+    "group": "교양",
+    "filename": "첨성인소양.json",
+    "timestamp": "2026-11-16T13:22:14.133",
+    "count": 159
+  },
+  {
+    "id": "foundation",
+    "label": "첨성인기초",
+    "group": "교양",
+    "filename": "첨성인기초.json",
+    "timestamp": "2026-11-16T13:19:25.24",
+    "count": 240
+  },
+  {
+    "id": "ai",
+    "label": "인컴",
+    "group": "전공",
+    "filename": "인컴.json",
+    "timestamp": "2026-11-16T13:12:24.086",
+    "count": 25
+  },
+  {
+    "id": "advanced",
+    "label": "심컴",
+    "group": "전공",
+    "filename": "심컴 과목.json",
+    "timestamp": "2026-11-16T13:11:02.876",
+    "count": 10
+  },
+  {
+    "id": "global",
+    "label": "글솦",
+    "group": "전공",
+    "filename": "글솝.json",
+    "timestamp": "2026-11-16T13:16:05.179",
+    "count": 22
+  }
+]
