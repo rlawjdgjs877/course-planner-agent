@@ -100,6 +100,8 @@ uvicorn app.main:app --reload
 | `GET /` | 시연용 화면 (`backend/app/static/index.html`). 조건을 고르면 시간표 화면으로 넘어가고, 그 아래 채팅으로 고칠 수 있음 |
 | `POST /chat` | 말로 시간표 고치기. 예: "세계의 문화 추가해줘", "운영체제 빼줘". OpenAI 키 필요 |
 | `/import/knu/*` | 경북대 이수 과목 불러오기 (실험 기능, 기본 꺼짐). 아래 설명 참고 |
+| `POST /tools/generate_timetable` | 에이전트 도구 정의 v3.2 형식의 시간표 생성 (프론트엔드용). 자세한 모양은 `docs/api-contract.md` |
+| `GET /tools/candidates/{id}` | 앞서 만든 후보(tt_001, tt_alt_001) 다시 가져오기 |
 | `GET /health` | 서버 상태 확인 |
 | `GET /courses` | 이번 학기 개설 강좌 전체. `sample`이 `true`이면 가짜 샘플 데이터 |
 | `POST /timetables` | 조건에 맞고 시간이 겹치지 않는 시간표를 점수순으로 반환 |
@@ -148,6 +150,16 @@ AI는 사용자의 말을 이해해 **조건만** 고치고, 시간표는 `POST 
 4. 조건에 맞는 시간표가 없으면 적용하지 않고 이유를 답합니다.
 
 `backend/.env`에 `OPENAI_API_KEY`와 `OPENAI_MODEL`이 둘 다 있어야 동작합니다. 없으면 503과 함께 안내 문구를 돌려줍니다. 관련 코드는 `backend/app/agent/chat.py`에 있습니다.
+
+## 프론트엔드와 연결
+
+프론트엔드(`frontend/`, Plann)가 부를 API의 요청·응답 모양은 [docs/api-contract.md](docs/api-contract.md)에 있습니다. 필드 이름은 프론트엔드의 `PlanningConstraints`와 같습니다.
+
+실제 2026-2학기 개설 강좌(781개 분반)는 프론트엔드 팀이 모은 학교 조회 응답 원본(`frontend/data/course-sources/*.json`)에서 가져옵니다. 원본이 바뀌면 `backend` 폴더에서 다시 넣고, 함께 바뀌는 `backend/app/data/courses.json`을 커밋합니다.
+
+```bash
+python -m scripts.import_data offerings ../frontend/data/course-sources
+```
 
 ## 데이터베이스
 

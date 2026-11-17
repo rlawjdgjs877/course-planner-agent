@@ -17,6 +17,15 @@ class Meeting(BaseModel):
     end: str = Field(description="종료 시각 HH:MM")
 
 
+class CourseListing(BaseModel):
+    """같은 분반이 어느 자료(트랙, 교양 영역)에 어떤 이수구분과 학년으로 올라 있는지."""
+
+    source: str = Field(description="자료 이름. 트랙 id(advanced, ai, research, platform, global), computing(컴학 공통), 교양 영역 등")
+    category: str = Field(description="그 자료에서의 교과구분. 예: 전공필수, 공학전공, 교양")
+    grade: str | None = Field(default=None, description="그 자료에서의 대상 학년. *는 전학년")
+    department: str | None = Field(default=None, description="그 자료에서의 개설학과")
+
+
 class Course(BaseModel):
     """개설 강좌 하나 (분반 단위)."""
 
@@ -47,6 +56,10 @@ class Course(BaseModel):
     room: str | None = Field(default=None, description="호실번호")
     capacity: int | None = Field(default=None, description="수강정원")
     enrolled: int | None = Field(default=None, description="수강신청 인원")
+    listings: list[CourseListing] = Field(
+        default_factory=list, description="트랙·영역별 이수구분. 같은 분반이 여러 자료에 다르게 올라 있을 수 있다"
+    )
+    area: str | None = Field(default=None, description="교양 영역. 시간표를 짤 때 listings 에서 정한다")
 
 
 class CourseList(BaseModel):
@@ -174,6 +187,19 @@ class TimetableRequest(BaseModel):
         default_factory=list,
         description="가능하면 유지할 강좌번호. 채팅으로 고칠 때 지금 시간표와 비슷한 결과를 내는 데 쓴다",
     )
+    avoid_times: list[TimeBlock] = Field(
+        default_factory=list, description="가능하면 피할 시간대 (겹치면 점수가 깎인다)"
+    )
+    target_credits: float | None = Field(
+        default=None, description="목표 학점. 정하면 학점이 이 값에 가까울수록 점수가 높다"
+    )
+    prefer_professors: list[str] = Field(default_factory=list, description="가능하면 넣을 교수 이름")
+    prefer_areas: list[str] = Field(
+        default_factory=list, description="가능하면 넣을 교양 영역 (Course.area 에 이 글자가 들어 있으면)"
+    )
+    section_bonus: dict[str, float] = Field(
+        default_factory=dict, description="강좌번호별로 점수에 더할 값. 학생에게 맞는 과목을 우선할 때 쓴다"
+    )
 
     max_results: int = Field(default=5, ge=1, le=20, description="돌려줄 시간표 개수")
 
@@ -224,3 +250,101 @@ class ChatResponse(BaseModel):
     applied: bool = Field(description="조건이 바뀌어 시간표를 다시 만들었는지")
     request: TimetableRequest = Field(description="적용된 조건 (바뀌지 않았으면 보낸 그대로)")
     result: TimetableResult | None = Field(default=None, description="다시 만든 시간표")
+
+
+# ---------- 에이전트 도구 정의 v3.2: generate_timetable ----------
+# 프론트엔드(frontend/app/lib/planning.ts 의 PlanningConstraints)와 같은 필드 이름을 쓴다.
+
+PLAN_DAYS = ("월", "화", "수", "목", "금", "토", "일")
+
+
+class DayTime(BaseModel):
+    day: str = Field(description="요일 한 글자: 월 화 수 목 금 토 일")
+    start: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$|^24:00$", description="HH:MM")
+    end: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$|^24:00$", description="HH:MM")
+
+    @model_validator(mode="after")
+    def _check(self) -> "DayTime":
+        if self.day not in PLAN_DAYS:
+            raise ValueError("day 는 월~일 중 한 글자여야 합니다")
+        if self.start >= self.end:
+            raise ValueError("end 는 start 보다 늦어야 합니다")
+        return self
+
+
+class GenerateTimetableRequest(BaseModel):
+    """시간표 생성 요청 (v3.2). 반드시 지킬 조건과 가능하면 지킬 조건을 나눠 받는다."""
+
+    base_candidate_id: str | None = Field(
+        default=None, description="이 후보(tt_001 등)를 바탕으로 고친다. 그 후보의 과목을 가능하면 유지한다"
+    )
+    min_credits: float = Field(default=15, ge=0, le=30)
+    target_credits: float = Field(default=18, ge=0, le=30)
+    max_credits: float = Field(default=19, ge=0, le=30, description="학칙 상한(기본 19)을 넘으면 상한으로 줄인다")
+    credits_strict: bool = Field(default=False, description="True 면 최소 학점을 반드시 지킨다")
+    free_days: list[str] = Field(default_factory=list, description="반드시 비울 요일")
+    blocked_times: list[DayTime] = Field(default_factory=list, description="반드시 비울 시간")
+    avoid_times: list[DayTime] = Field(default_factory=list, description="가능하면 비울 시간")
+    must_include: list[str] = Field(default_factory=list, description="반드시 넣을 과목. 과목코드, 강좌번호(분반), 과목명")
+    exclude: list[str] = Field(default_factory=list, description="넣지 않을 과목. 과목코드, 강좌번호(분반), 과목명")
+    ge_areas: list[str] = Field(default_factory=list, description="가능하면 넣을 교양 영역. 예: 인문, 자연, 첨성인기초")
+    prefer_professor: list[str] = Field(default_factory=list, description="가능하면 넣을 교수")
+    # v3.2 정의서 밖의 확장: 학생 정보 (서버에 저장하지 않는다)
+    track: str | None = Field(
+        default=None, description="학생 트랙: advanced(심컴) ai(인컴) research(첨컴) platform(플솦) global(글솦)"
+    )
+    completed: list[str] = Field(default_factory=list, description="이미 이수한 과목코드")
+    grade: int | None = Field(default=None, ge=1, le=6, description="학생 학년. 그 학년 과목을 우선한다")
+    max_candidates: int = Field(default=3, ge=1, le=5)
+
+    @model_validator(mode="after")
+    def _check(self) -> "GenerateTimetableRequest":
+        if not self.min_credits <= self.target_credits <= self.max_credits:
+            raise ValueError("min_credits <= target_credits <= max_credits 여야 합니다")
+        if any(day not in PLAN_DAYS for day in self.free_days):
+            raise ValueError("free_days 는 월~일 중 한 글자여야 합니다")
+        return self
+
+
+class Candidate(BaseModel):
+    id: str = Field(description="후보 id. tt_001, 대안은 tt_alt_001")
+    sections: list[Course] = Field(description="담긴 분반. category 와 area 는 요청의 트랙 기준")
+    total_credits: float
+    credits_by_category: dict[str, float]
+    free_days: list[str]
+    gap_minutes: int
+    score: float
+    warnings: list[str] = Field(default_factory=list, description="정원 초과, 피할 시간과 겹침 등")
+
+
+OmitReason = Literal[
+    "not_offered", "already_completed", "excluded", "not_recommended",
+    "free_day_conflict", "blocked_time", "time_conflict",
+]
+
+
+class OmittedCourse(BaseModel):
+    item: str = Field(description="요청에 적힌 그대로")
+    code: str | None = None
+    name: str | None = None
+    reason: OmitReason
+    detail: str = Field(description="사람이 읽을 이유")
+
+
+class Alternative(BaseModel):
+    id: str
+    relaxed: list[str] = Field(description="풀어 준 조건")
+    description: str = Field(description="예: 화요일 09:00~12:00 수업을 허용하면 18학점 (컴퓨터구조 포함)")
+    candidate: Candidate
+
+
+class GenerateTimetableResponse(BaseModel):
+    status: Literal["success", "partial", "infeasible"] = Field(
+        description="success: 반드시 조건과 최소 학점을 모두 지킴, partial: 일부만 지킴, infeasible: 시간표 없음"
+    )
+    optimal: bool = Field(default=False, description="최적임을 증명했는지. 지금은 항상 False")
+    candidates: list[Candidate]
+    applied: dict = Field(description="실제로 쓴 학점 조건과 트랙 등")
+    omitted_required: list[OmittedCourse] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    alternatives: list[Alternative] = Field(default_factory=list, description="조건을 하나 풀면 나아지는 안 (최대 2개)")

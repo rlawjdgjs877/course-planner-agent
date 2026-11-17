@@ -141,14 +141,14 @@ def test_full_flow_against_a_mock_school(school, caplog):
     frame, statuses = {}, []
     while time.time() < deadline:
         frame = client.post("/import/knu/frame", headers=headers).json()
-        if not statuses or statuses[-1] != frame["status"]:
-            statuses.append(frame["status"])
+        if not statuses or statuses[-1][1] != frame["status"]:
+            statuses.append((round(time.time() - began, 1), frame["status"]))
         if frame["finished"]:
             break
         time.sleep(0.5)
     assert frame["finished"], statuses
-    assert time.time() - began < 10, f"{time.time() - began:.1f}초 걸림"  # 고치기 전에는 약 14초
-    assert any("학사행정" in status for status in statuses), statuses
+    assert time.time() - began < 10, statuses  # 고치기 전에는 약 14초
+    assert any("학사행정" in status for _, status in statuses), statuses
     assert school._sessions[token].query_clicks == 1  # 조회 버튼을 자동으로 한 번 눌렀다
     assert len(school._sessions[token].context.pages) == 2  # 공지 팝업이 떠 있어도 진행했다
     assert [(c["code"], c["credits"], c["category"]) for c in frame["courses"]] == [
