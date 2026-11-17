@@ -63,3 +63,20 @@
 .is-welcome .choice-footnote{font-size:8px;line-height:1.8;margin-top:14px}
 @media(min-width:1500px) and (min-height:850px){.desktop.is-welcome{padding:5vh 3vw}.is-welcome .finder-window{height:90vh;max-height:900px}.is-welcome .input-method-choice.direct-entry{padding:34px 40px 23px}.is-welcome .choice-intro-icon.fingerprint-icon{width:79px;height:79px;margin-bottom:17px}.is-welcome .choice-intro{margin-bottom:27px}.is-welcome .choice-intro h1{font-size:31px}.is-welcome .choice-intro>p{font-size:16px}.is-welcome .direct-entry-options>.academic-link-entry,.is-welcome .direct-manual-entry{padding:24px 25px 20px}}
 
+/* Both entry actions share the same grid row, independent of help text length. */
+.is-welcome .direct-entry-options{grid-template-rows:repeat(5,auto) 42px auto auto;row-gap:8px}
+.is-welcome .direct-entry-options>.academic-link-entry,.is-welcome .direct-manual-entry{display:grid;grid-template-rows:subgrid;grid-row:1 / span 8;row-gap:8px;align-items:stretch}
+.is-welcome .direct-entry-options>.academic-link-entry{grid-column:1}
+.is-welcome .direct-manual-entry{grid-column:2}
+.is-welcome .direct-entry-options .academic-link-entry .document-heading,.is-welcome .direct-entry-options .academic-link-entry .document-heading>div,.is-welcome .direct-entry-options .academic-link-entry form,.is-welcome .direct-entry-options .academic-link-input-row{display:contents}
+.is-welcome .direct-entry-options .link-entry-icon,.is-welcome .direct-manual-entry .method-icon{grid-row:1;justify-self:center;margin:0}
+.is-welcome .direct-entry-options .academic-link-entry h2,.is-welcome .direct-manual-entry h2{grid-row:2;text-align:center;margin:0}
+.is-welcome .direct-entry-options .document-description,.is-welcome .direct-manual-entry>p{grid-row:3;text-align:center;margin:0}
+.is-welcome .direct-entry-options .academic-link-entry form>label{grid-row:4;margin:0}
+.is-welcome .direct-entry-options .academic-link-input-row input{grid-row:5;width:100%;margin:0}
+.is-welcome .direct-entry-options .primary-button,.is-welcome .direct-manual-button{grid-row:6;width:100%;height:42px;min-height:42px;margin:0;align-self:stretch}
+.is-welcome .direct-entry-options .link-entry-help,.is-welcome .direct-manual-entry>small{grid-row:7;margin:0;text-align:center}
+.is-welcome .direct-entry-options #academic-link-status{grid-row:8}
+/* More vivid primary actions on the welcome screen. */
+.is-welcome .direct-entry-options .primary-button,.is-welcome .direct-manual-button{background:linear-gradient(180deg,#338bff 0%,#1473f5 100%);border-color:#1470ed;box-shadow:inset 0 1px 0 #72aeff,0 3px 9px #1675f42e;color:#fff}
+.is-welcome .direct-entry-options .primary-button:hover,.is-welcome .direct-manual-button:hover{background:linear-gradient(180deg,#247fff 0%,#0864e4 100%);border-color:#0860df;box-shadow:0 4px 12px #126ee63d}
