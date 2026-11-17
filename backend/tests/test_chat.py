@@ -209,3 +209,16 @@ def test_endpoint_explains_missing_api_key(monkeypatch):
     )
     assert response.status_code == 503
     assert "OPENAI_API_KEY" in response.json()["detail"]
+
+
+def test_completed_courses_not_offered_this_semester_survive_an_edit(courses):
+    """학교에서 불러온 이수 과목은 대부분 이번 학기에 열리지 않는다. 채팅으로 고쳐도 지워지면 안 된다."""
+    base = TimetableRequest(min_credits=9, max_credits=12, completed=["COMP0101", "COMP0202", "SAMP0201"])
+
+    def add(conditions):
+        conditions.must_include.append("SAMP0301")
+
+    response = handle_chat(ChatRequest(message="운영체제 넣어줘", request=base), courses, fake_ai(add))
+    assert response.applied
+    assert response.request.completed == ["COMP0101", "COMP0202", "SAMP0201"]
+    assert "COMP0101" not in response.reply  # '찾지 못한 과목'으로 보고하지 않는다

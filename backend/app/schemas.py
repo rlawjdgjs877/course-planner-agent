@@ -54,6 +54,60 @@ class CourseList(BaseModel):
     courses: list[Course]
 
 
+class ImportedCourse(BaseModel):
+    """학생이 이미 이수한 과목. 학교 화면에서 불러오거나 직접 입력한다. 성적은 담지 않는다."""
+
+    code: str = Field(description="과목코드")
+    name: str = Field(description="과목명")
+    credits: float | None = Field(default=None, description="학점")
+    category: str | None = Field(default=None, description="이수구분")
+
+
+class KnuImportStatus(BaseModel):
+    enabled: bool = Field(description="서버 설정에서 이 실험 기능이 켜져 있는지")
+    installed: bool = Field(description="Playwright 가 설치되어 있는지")
+    available: bool = Field(description="지금 이 요청자가 쓸 수 있는지")
+    reason: str | None = Field(default=None, description="쓸 수 없을 때 이유")
+    idle_minutes: int = Field(description="이만큼 아무 요청이 없으면 연결을 닫는다")
+
+
+class KnuStartRequest(BaseModel):
+    consent: bool = Field(description="안내를 읽고 본인 계정으로만 쓴다는 동의")
+
+
+class KnuStartResponse(BaseModel):
+    session: str = Field(description="이 연결의 토큰. 이후 요청의 X-Import-Session 헤더에 넣는다")
+
+
+class KnuInput(BaseModel):
+    """원격 학교 화면에 보내는 입력 하나."""
+
+    type: Literal["click", "key", "text", "scroll"]
+    x: float | None = Field(default=None, ge=0, le=1280)
+    y: float | None = Field(default=None, ge=0, le=800)
+    key: str | None = Field(default=None, max_length=20)
+    text: str | None = Field(default=None, max_length=200)
+    delta: float | None = Field(default=None, ge=-2000, le=2000)
+
+
+class KnuFrameRequest(BaseModel):
+    have: str | None = Field(default=None, description="학생 화면에 이미 있는 화면의 frame_id")
+
+
+class KnuFrame(BaseModel):
+    image: str | None = Field(default=None, description="원격 화면 JPEG (base64). 바뀌지 않았으면 비어 있다")
+    frame_id: str | None = Field(default=None, description="지금 화면의 식별자")
+    status: str = Field(description="지금 무엇을 하고 있는지")
+    finished: bool = Field(description="이수 과목을 읽었는지")
+    courses: list[ImportedCourse] = Field(default_factory=list)
+    duplicates: list[str] = Field(default_factory=list, description="여러 번 나온 과목코드")
+    expires_in: int = Field(description="이 연결이 자동으로 닫히기까지 남은 초")
+
+
+class KnuStopRequest(BaseModel):
+    session: str | None = Field(default=None, description="헤더를 못 붙이는 경우(페이지를 닫을 때)용")
+
+
 class RequiredCourse(BaseModel):
     course_code: str = Field(description="교과목코드")
     name: str = Field(description="교과목명")

@@ -40,6 +40,7 @@
   button { cursor: pointer; }
   :focus-visible { outline: 3px solid #2b5fd9; outline-offset: 2px; }
   [hidden] { display: none !important; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
   .shell { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 26px; max-width: 1480px; margin: 0 auto; padding: 22px 24px 64px; align-items: start; }
 
@@ -189,6 +190,43 @@
   .done { display: inline-block; margin-left: 8px; padding: 0 8px; border-radius: 3px; background: var(--tan); font-size: 13px; font-weight: 700; white-space: nowrap; }
   .request-form { display: flex; gap: 8px; }
   .request-form input { flex: 1; min-width: 0; min-height: 48px; padding: 0 14px; }
+  /* 이수 과목 */
+  .history-table { width: 100%; border-collapse: collapse; }
+  .history-table th { background: #f5f6f8; font-weight: 500; font-size: 14px; padding: 8px 10px; border-bottom: 1px solid #d5d9e0; text-align: left; white-space: nowrap; }
+  .history-table td { padding: 7px 10px; border-bottom: 1px solid #eef0f3; overflow-wrap: anywhere; }
+  .history-table td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .history-table .remove { border: 0; background: none; color: var(--taupe); text-decoration: underline; padding: 4px; }
+  .history-table .empty { color: var(--muted); }
+  .history-scroll { max-height: 340px; overflow: auto; border: 1px solid var(--border); border-radius: 3px; }
+  .history-summary { color: var(--muted); margin-top: 8px; }
+  .add-row { display: grid; grid-template-columns: 1.1fr 2fr .7fr 1fr auto; gap: 6px; margin-top: 14px; }
+  .add-row input { min-width: 0; }
+  .row-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+  details.paste { margin-top: 14px; }
+  details.paste summary { cursor: pointer; color: var(--taupe); }
+  details.paste textarea { display: block; width: 100%; min-height: 110px; margin-top: 8px; font: inherit; border: 1px solid #c9ced8; border-radius: 3px; padding: 8px; }
+  .small-button { min-height: 38px; padding: 0 14px; border: 1px solid #c9ced8; border-radius: 3px; background: #fff; font-size: 14.5px; }
+  .small-button:hover { border-color: var(--taupe); }
+  .warn { background: #fff8e1; border: 1px solid #f0dca0; border-radius: 4px; padding: 9px 12px; font-size: 14px; margin-top: 14px; }
+  .help { font-size: 13.5px; color: var(--muted); margin-top: 6px; }
+  /* 학교 화면에서 불러오기 (실험) */
+  .knu { margin-top: 22px; border-top: 1px solid var(--border); padding-top: 18px; }
+  .knu-notice { background: #f7f4f0; border-left: 4px solid var(--taupe); padding: 12px 14px; font-size: 14px; }
+  .knu-notice ul { list-style: disc; padding-left: 20px; margin-top: 6px; }
+  .knu-notice li { margin: 3px 0; }
+  .knu-notice .check { margin-top: 10px; font-weight: 500; }
+  .knu-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+  .knu-status { color: var(--muted); margin-top: 10px; min-height: 1.5em; }
+  .screen { position: relative; margin-top: 10px; background: #1f2633; border-radius: 4px; overflow: hidden; aspect-ratio: 1280 / 800; }
+  .screen img { display: block; width: 100%; height: 100%; }
+  .screen .capture { position: absolute; inset: 0; cursor: crosshair; }
+  .screen .capture:focus-visible { outline: 3px solid #2b5fd9; outline-offset: -3px; }
+  .screen .placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: #c8cfdb; }
+  .typing { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .typing input { flex: 1; min-width: 180px; }
+  .knu-result { margin-top: 16px; }
+  .knu-result h4 { font-size: 15px; margin: 0 0 8px; }
+  @media (max-width: 860px) { .add-row { grid-template-columns: 1fr 1fr; } }
 </style>
 </head>
 <body>
@@ -211,6 +249,79 @@
     <main id="view-conditions">
       <p class="notice" id="sample-notice" hidden>지금 나오는 과목은 예시로 넣어 둔 가짜 과목입니다.</p>
       <form id="conditions">
+          <section class="card" id="sec-history">
+            <h2>이수 과목<small>이미 들은 과목은 시간표에서 뺍니다</small></h2>
+            <div class="history-scroll">
+              <table class="history-table">
+                <thead><tr><th scope="col">과목코드</th><th scope="col">과목명</th><th scope="col">학점</th><th scope="col">이수구분</th><th scope="col"><span class="sr-only">지우기</span></th></tr></thead>
+                <tbody id="history-rows"></tbody>
+              </table>
+            </div>
+            <p class="history-summary" id="history-summary"></p>
+
+            <div class="add-row" role="group" aria-label="이수 과목 직접 추가">
+              <input id="add-code" placeholder="과목코드" aria-label="과목코드" maxlength="30">
+              <input id="add-name" placeholder="과목명" aria-label="과목명" maxlength="80">
+              <input id="add-credits" type="number" min="0" max="10" step="0.5" placeholder="학점" aria-label="학점">
+              <input id="add-category" placeholder="이수구분" aria-label="이수구분" maxlength="30">
+              <button type="button" class="small-button" id="add-history">추가</button>
+            </div>
+            <details class="paste">
+              <summary>여러 과목 한꺼번에 붙여넣기</summary>
+              <p class="help">한 줄에 한 과목씩 "과목코드 과목명 3학점 이수구분" 형식으로 붙여넣습니다. 학점과 이수구분은 빼도 됩니다.</p>
+              <textarea id="paste-text" aria-label="붙여넣을 이수 과목"></textarea>
+              <div class="row-actions"><button type="button" class="small-button" id="paste-add">목록에 추가</button><span class="help" id="paste-result" aria-live="polite"></span></div>
+            </details>
+            <div class="row-actions"><button type="button" class="small-button" id="history-clear">이수 과목 모두 지우기</button></div>
+            <p class="warn">이 목록은 시간표에서 이미 들은 과목을 빼는 데만 씁니다. 재이수 같은 일부 경우는 확인되지 않았고, 졸업 요건을 채웠는지 판정하지 않습니다.</p>
+
+            <div class="knu" id="knu-box" hidden>
+              <h3>경북대 학사시스템에서 불러오기<small>실험 기능</small></h3>
+              <div class="knu-notice">
+                <strong>시작 전에 꼭 읽어 주세요</strong>
+                <ul>
+                  <li>학교의 공식 연동이 아닙니다. 이 서비스가 운영하는 브라우저가 학교 화면을 열고 자동으로 조작합니다.</li>
+                  <li>아래 화면에 입력하는 아이디와 비밀번호, 로그인한 뒤의 학교 세션은 이 서비스의 브라우저를 거칩니다.</li>
+                  <li>비밀번호, 쿠키, 세션, 성적은 저장하거나 기록하지 않습니다. 과목코드, 과목명, 학점, 이수구분만 읽어 이 화면에 보여 줍니다.</li>
+                  <li>연결 종료를 누르거나, <span id="knu-idle">10</span>분 동안 쓰지 않거나, 이 페이지를 닫으면 브라우저와 읽은 내용이 지워집니다.</li>
+                  <li>보안 검증을 거치지 않은 실험 기능입니다. 본인 계정으로만 쓰고, 꺼려지면 위에서 직접 입력해 주세요.</li>
+                </ul>
+                <label class="check"><input type="checkbox" id="knu-consent"> 위 내용을 이해했고, 본인 계정으로만 사용합니다</label>
+              </div>
+              <div class="knu-controls">
+                <button type="button" class="primary" id="knu-start" disabled>학교 화면 열기</button>
+                <button type="button" class="small-button" id="knu-retry" hidden>자동 이동 다시 시도</button>
+                <button type="button" class="small-button" id="knu-stop" hidden>연결 종료</button>
+              </div>
+              <p class="knu-status" id="knu-status" aria-live="polite"></p>
+              <div class="screen" id="knu-screen" hidden>
+                <div class="placeholder" id="knu-placeholder">학교 화면을 불러오는 중입니다</div>
+                <img id="knu-frame" alt="" hidden>
+                <div class="capture" id="knu-capture" tabindex="0" role="application"
+                     aria-label="원격 학교 화면. 누른 위치를 클릭하고, 선택한 상태에서 키보드 입력을 보냅니다."></div>
+              </div>
+              <div class="typing" id="knu-typing" hidden>
+                <input type="password" id="knu-text" maxlength="200" autocomplete="off" aria-label="학교 화면에 입력할 글자"
+                       placeholder="한글이나 비밀번호는 여기에 적고 보내기">
+                <button type="button" class="small-button" id="knu-text-toggle" aria-pressed="false">보이기</button>
+                <button type="button" class="small-button" id="knu-text-send">보내기</button>
+              </div>
+              <p class="help" id="knu-help" hidden>학교 화면의 입력칸을 먼저 누른 뒤, 화면을 선택한 채로 키보드로 치거나 위 칸에 적어 보내세요. 자동 이동이 안 되거나 추가 인증이 나오면 화면을 직접 눌러 진행하면 됩니다. 그래도 안 되면 연결을 종료하고 위에서 직접 입력해 주세요.</p>
+              <div class="knu-result" id="knu-result" hidden>
+                <h4 id="knu-result-title"></h4>
+                <div class="history-scroll">
+                  <table class="history-table">
+                    <thead><tr><th scope="col">과목코드</th><th scope="col">과목명</th><th scope="col">학점</th><th scope="col">이수구분</th></tr></thead>
+                    <tbody id="knu-rows"></tbody>
+                  </table>
+                </div>
+                <p class="warn" id="knu-duplicates" hidden></p>
+                <div class="knu-controls"><button type="button" class="primary" id="knu-apply">이 목록을 이수 과목에 넣고 연결 종료</button></div>
+              </div>
+            </div>
+            <p class="help" id="knu-off" hidden></p>
+          </section>
+
           <section class="card" id="sec-courses">
             <h2>과목<small>꼭 넣을 과목, 뺄 과목, 이미 들은 과목을 표시합니다</small></h2>
             <input type="search" id="course-search" placeholder="과목명이나 교과목코드" aria-label="과목 찾기">
@@ -338,8 +449,9 @@ const DAY_NAMES = { 월: '월요일', 화: '화요일', 수: '수요일', 목: '
 const TINTS = ['#f6dfa6', '#dccdc2', '#cfe3d2', '#cfdcee', '#f4cdb8', '#ddd4ea'];  // 과목 칸 색
 const LIST_LIMIT = 60;
 const STORAGE_KEY = 'course-planner-request';
+const HISTORY_KEY = 'course-planner-history';  // 이수 과목. 이 브라우저 탭에만 둔다
 const SECTIONS = {
-  conditions: [['과목', 'sec-courses'], ['영역별 최소 학점', 'sec-category'], ['학점', 'sec-credits'], ['요일', 'sec-days'], ['수업 시간', 'sec-time']],
+  conditions: [['이수 과목', 'sec-history'], ['과목', 'sec-courses'], ['영역별 최소 학점', 'sec-category'], ['학점', 'sec-credits'], ['요일', 'sec-days'], ['수업 시간', 'sec-time']],
   timetable: [['시간표', 'sec-board'], ['수정 요청', 'sec-requests'], ['수강 과목', 'sec-picked'], ['적용한 조건', 'sec-applied']],
 };
 
@@ -349,6 +461,8 @@ const state = {
   request: null, timetables: [], truncated: false, active: 0,
   chat: [],
   view: 'conditions', panel: 0,
+  history: [],  // 이수 과목 {code, name, credits, category}
+  knu: { token: null, running: false, result: null, resultKey: '', lastPoll: 0, errorUntil: 0, frameId: null, queue: Promise.resolve(), wheel: 0, wheelTimer: null },
 };
 const $ = (id) => document.getElementById(id);
 
@@ -475,7 +589,7 @@ function requestFromForm() {
     max_credits: Number($('max-credits').value),
     must_include: pick('must'),
     exclude: pick('skip'),
-    completed: pick('done'),
+    completed: [...new Set([...pick('done'), ...state.history.map((course) => course.code)])],
     blocked_times: blocked,
     required_credits: required,
     exclude_full: $('exclude-full').checked,
@@ -518,7 +632,7 @@ function formFromRequest(request) {
   state.choice = new Map([
     ...request.must_include.map((code) => [code, 'must']),
     ...request.exclude.map((code) => [code, 'skip']),
-    ...request.completed.map((code) => [code, 'done']),
+    ...request.completed.filter((code) => !historyCodes().has(code)).map((code) => [code, 'done']),
   ]);
   renderCourseList();
 }
@@ -536,7 +650,9 @@ function describeRequest(request) {
   const items = [`${num(request.min_credits)}~${num(request.max_credits)}학점`];
   if (request.must_include.length) items.push(`${request.must_include.map(nameOf).join(', ')} 꼭 넣기`);
   if (request.exclude.length) items.push(`${request.exclude.map(nameOf).join(', ')} 빼기`);
-  if (request.completed.length) items.push(`${request.completed.map(nameOf).join(', ')} 이미 들음`);
+  const marked = request.completed.filter((code) => !historyCodes().has(code));
+  if (marked.length) items.push(`${marked.map(nameOf).join(', ')} 이미 들음`);
+  if (state.history.length) items.push(`이수 과목 ${state.history.length}개 제외`);
   for (const block of request.blocked_times) {
     if (block.day && isWholeDay(block)) items.push(`${DAY_NAMES[block.day]} 수업 없음`);
     else if (!block.day && block.start === '00:00') items.push(`${block.end} 전 수업 없음`);
@@ -710,7 +826,8 @@ function setPanel(index) {
 /* ---------- 왼쪽 메뉴: 지금 적은 값 ---------- */
 
 function conditionCount(request) {
-  return request.must_include.length + request.exclude.length + request.completed.length
+  const marked = request.completed.filter((code) => !historyCodes().has(code)).length;
+  return request.must_include.length + request.exclude.length + marked + (state.history.length ? 1 : 0)
     + request.blocked_times.length + request.preferred_free_days.length
     + Object.keys(request.required_credits).length + (request.exclude_full ? 1 : 0);
 }
@@ -719,7 +836,8 @@ function conditionValues(request) {
   const courses = [
     request.must_include.length ? `꼭 넣기 ${request.must_include.length}` : '',
     request.exclude.length ? `빼기 ${request.exclude.length}` : '',
-    request.completed.length ? `들음 ${request.completed.length}` : '',
+    request.completed.filter((code) => !historyCodes().has(code)).length
+      ? `들음 ${request.completed.filter((code) => !historyCodes().has(code)).length}` : '',
   ].filter(Boolean);
 
   const days = [], times = [];
@@ -735,6 +853,7 @@ function conditionValues(request) {
   if (request.exclude_full) times.push('정원 찬 강좌 제외');
 
   return {
+    'sec-history': state.history.length ? `${state.history.length}과목` : '',
     'sec-courses': courses.join(', '),
     'sec-category': Object.entries(request.required_credits).map(([category, value]) => `${category} ${num(value)}`).join(', '),
     'sec-credits': `${num(request.min_credits)}~${num(request.max_credits)}학점`,
@@ -761,7 +880,7 @@ function updateSide() {
   const values = onConditions ? conditionValues(request) : timetableValues();
   for (const slot of document.querySelectorAll('#side-sections em')) {
     const value = values[slot.dataset.for];
-    slot.textContent = value || (onConditions ? '상관없음' : '없음');
+    slot.textContent = value || (onConditions && slot.dataset.for !== 'sec-history' ? '상관없음' : '없음');
     slot.classList.toggle('empty', !value);
   }
   const count = conditionCount(request);
@@ -798,6 +917,10 @@ function onReset() {
   $('ledger-rows').replaceChildren();
   $('ledger').hidden = true;
   try { sessionStorage.removeItem(STORAGE_KEY); } catch (error) { /* 지울 것이 없어도 된다 */ }
+  state.history = [];
+  saveHistory();
+  renderHistory();
+  knuStop();
   renderCategories();
   renderCourseList();
   renderExtraBlocks();
@@ -900,9 +1023,355 @@ async function sendChat(event) {
   }
 }
 
+/* ---------- 이수 과목 ---------- */
+
+const historyCodes = () => new Set(state.history.map((course) => course.code));
+
+function saveHistory() {
+  try {
+    if (state.history.length) sessionStorage.setItem(HISTORY_KEY, JSON.stringify(state.history));
+    else sessionStorage.removeItem(HISTORY_KEY);
+  } catch (error) { /* 저장 못 해도 동작에는 문제없다 */ }
+}
+
+function loadHistory() {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(HISTORY_KEY));
+    if (Array.isArray(saved)) {
+      state.history = saved.filter((course) => course && typeof course.code === 'string' && typeof course.name === 'string');
+    }
+  } catch (error) { state.history = []; }
+}
+
+/* 과목을 이수 목록에 더한다. 이미 있는 과목코드는 건너뛴다. 더한 개수를 돌려준다. */
+function addHistory(items) {
+  const seen = historyCodes();
+  let added = 0;
+  for (const item of items) {
+    const code = String(item.code || '').trim();
+    if (!code || seen.has(code)) continue;
+    seen.add(code);
+    const credits = item.credits === null || item.credits === undefined || item.credits === '' ? null : Number(item.credits);
+    state.history.push({
+      code,
+      name: String(item.name || '').trim() || code,
+      credits: Number.isFinite(credits) ? credits : null,
+      category: String(item.category || '').trim() || null,
+    });
+    added += 1;
+  }
+  saveHistory();
+  renderHistory();
+  updateSide();
+  return added;
+}
+
+function courseRow(course, removable) {
+  const cells = [
+    el('td', { class: 'num', text: course.code }),
+    el('td', { text: course.name }),
+    el('td', { class: 'num', text: course.credits === null || course.credits === undefined ? '' : num(course.credits) }),
+    el('td', { text: course.category || '' }),
+  ];
+  if (removable) {
+    const remove = el('button', { type: 'button', class: 'remove', text: '지우기', 'aria-label': `${course.name} 지우기` });
+    remove.addEventListener('click', () => {
+      state.history = state.history.filter((other) => other.code !== course.code);
+      saveHistory();
+      renderHistory();
+      updateSide();
+    });
+    cells.push(el('td', {}, remove));
+  }
+  return el('tr', {}, cells);
+}
+
+function renderHistory() {
+  const rows = $('history-rows');
+  if (!state.history.length) {
+    rows.replaceChildren(el('tr', {}, el('td', { class: 'empty', colspan: 5, text: '아직 없습니다. 아래에서 직접 추가하거나 학교 화면에서 불러오세요.' })));
+    $('history-summary').textContent = '';
+    return;
+  }
+  rows.replaceChildren(...state.history.map((course) => courseRow(course, true)));
+  const known = state.history.filter((course) => course.credits !== null);
+  const total = known.reduce((sum, course) => sum + course.credits, 0);
+  const unknown = state.history.length - known.length;
+  $('history-summary').textContent = `${state.history.length}과목, ${num(total)}학점`
+    + (unknown ? ` (학점을 모르는 과목 ${unknown}개 제외)` : '');
+}
+
+/* "과목코드 과목명 3학점 이수구분" 줄들을 읽는다. 학점과 이수구분은 없어도 된다. */
+function parsePasted(text) {
+  const courses = [], skipped = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || /^\d+\s*과목$/.test(line)) continue;
+    let match = line.match(/^(\S+)\s+(.+?)\s+(\d+(?:\.\d+)?)\s*학점(?:\s+(.+))?$/);
+    if (match) {
+      courses.push({ code: match[1], name: match[2], credits: Number(match[3]), category: match[4] || null });
+      continue;
+    }
+    match = line.match(/^(\S+)\s+(.+)$/);
+    if (match) courses.push({ code: match[1], name: match[2], credits: null, category: null });
+    else skipped.push(line);
+  }
+  return { courses, skipped };
+}
+
+function addTypedCourse() {
+  const code = $('add-code').value.trim();
+  const name = $('add-name').value.trim();
+  if (!code || !name) {
+    $('add-code').focus();
+    $('history-summary').textContent = '과목코드와 과목명을 적어 주세요.';
+    return;
+  }
+  if (!addHistory([{ code, name, credits: $('add-credits').value, category: $('add-category').value }])) {
+    $('history-summary').textContent = `${code}는 이미 목록에 있습니다.`;
+    return;
+  }
+  for (const id of ['add-code', 'add-name', 'add-credits', 'add-category']) $(id).value = '';
+  $('add-code').focus();
+}
+
+function addPastedCourses() {
+  const { courses, skipped } = parsePasted($('paste-text').value);
+  const added = addHistory(courses);
+  const parts = [`${added}과목을 추가했습니다.`];
+  if (courses.length > added) parts.push(`이미 있던 ${courses.length - added}과목은 건너뛰었습니다.`);
+  if (skipped.length) parts.push(`읽지 못한 줄 ${skipped.length}개는 직접 추가해 주세요.`);
+  $('paste-result').textContent = parts.join(' ');
+  if (added) $('paste-text').value = '';
+}
+
+/* ---------- 학교 화면에서 불러오기 (실험) ---------- */
+
+const KNU_KEYS = new Set(['Enter', 'Backspace', 'Tab', 'Delete', 'Escape', 'Home', 'End', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown']);
+const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function knuApi(path, body = {}, token = state.knu.token) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['X-Import-Session'] = token;
+  const response = await fetch(`/import/knu/${path}`, { method: 'POST', headers, body: JSON.stringify(body) });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(typeof data.detail === 'string' ? data.detail : `서버 응답 ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+const knuStatus = (text) => { $('knu-status').textContent = text; };
+
+function knuShowRunning(running) {
+  $('knu-start').hidden = running;
+  $('knu-consent').disabled = running;
+  for (const id of ['knu-retry', 'knu-stop', 'knu-screen', 'knu-typing', 'knu-help']) $(id).hidden = !running;
+  if (!running) {
+    $('knu-frame').removeAttribute('src');  // 학교 화면을 남기지 않는다
+    $('knu-frame').hidden = true;
+    $('knu-placeholder').hidden = false;
+    $('knu-text').value = '';
+    $('knu-result').hidden = true;
+    $('knu-rows').replaceChildren();
+    $('knu-start').disabled = !$('knu-consent').checked;
+  }
+}
+
+function knuShowResult(frame) {
+  const key = JSON.stringify(frame.courses);
+  if (key === state.knu.resultKey) return;
+  state.knu.resultKey = key;
+  state.knu.result = frame.courses;
+  $('knu-result').hidden = false;
+  $('knu-result-title').textContent = `읽은 이수 과목 ${frame.courses.length}개 (F, NP 제외)`;
+  $('knu-rows').replaceChildren(...frame.courses.map((course) => courseRow(course, false)));
+  $('knu-duplicates').hidden = !frame.duplicates.length;
+  $('knu-duplicates').textContent = frame.duplicates.length
+    ? `같은 과목코드가 여러 번 나와 하나만 남겼습니다: ${frame.duplicates.join(', ')}. 재이수일 수 있으니 확인해 주세요.`
+    : '';
+}
+
+async function knuLoop() {
+  while (state.knu.running) {
+    const watching = !document.hidden && state.view === 'conditions' && !$('sec-history').hidden;
+    if (watching || Date.now() - state.knu.lastPoll > 20000) {
+      try {
+        const frame = await knuApi('frame', { have: state.knu.frameId });
+        state.knu.lastPoll = Date.now();
+        if (!state.knu.running) break;
+        if (frame.image) {
+          state.knu.frameId = frame.frame_id;
+          $('knu-frame').src = `data:image/jpeg;base64,${frame.image}`;
+          $('knu-frame').hidden = false;
+          $('knu-placeholder').hidden = true;
+        }
+        if (Date.now() > state.knu.errorUntil) knuStatus(frame.status);  // 입력 오류는 잠시 보여 준다
+        if (frame.finished) knuShowResult(frame);
+      } catch (error) {
+        if ([403, 404, 503].includes(error.status)) { knuEnded(error.message); break; }
+        knuStatus(error.message);
+      }
+    }
+    await sleep(watching ? 80 : 1000);
+  }
+}
+
+async function knuStart() {
+  $('knu-start').disabled = true;
+  knuStatus('학교 화면을 여는 중입니다. 몇 초 걸릴 수 있습니다.');
+  try {
+    const { session } = await knuApi('start', { consent: $('knu-consent').checked }, null);
+    Object.assign(state.knu, { token: session, running: true, result: null, resultKey: '', lastPoll: Date.now(), frameId: null });
+    knuShowRunning(true);
+    knuLoop();
+  } catch (error) {
+    knuStatus(error.message);
+    $('knu-start').disabled = !$('knu-consent').checked;
+  }
+}
+
+function knuEnded(message) {
+  Object.assign(state.knu, { token: null, running: false, result: null, resultKey: '' });
+  knuShowRunning(false);
+  knuStatus(message);
+}
+
+async function knuStop(message = '연결을 종료했습니다. 브라우저와 읽은 내용을 지웠습니다.') {
+  const token = state.knu.token;
+  if (!token && !state.knu.running) return;
+  knuEnded(message);
+  try { await knuApi('stop', { session: token }, token); } catch (error) { /* 서버가 이미 닫았을 수 있다 */ }
+}
+
+function knuApply() {
+  const courses = state.knu.result || [];
+  const added = addHistory(courses);
+  const skipped = courses.length - added;
+  knuStop(`이수 과목 ${added}개를 넣고 연결을 종료했습니다.` + (skipped ? ` 이미 있던 ${skipped}개는 건너뛰었습니다.` : ''));
+}
+
+function knuSend(action) {
+  state.knu.queue = state.knu.queue
+    .then(() => (state.knu.running ? knuApi('input', action) : null))
+    .catch((error) => {
+      state.knu.errorUntil = Date.now() + 5000;
+      knuStatus(error.message);
+    });
+}
+
+function knuSetup() {
+  const capture = $('knu-capture');
+  $('knu-consent').addEventListener('change', () => { $('knu-start').disabled = !$('knu-consent').checked; });
+  $('knu-start').addEventListener('click', knuStart);
+  $('knu-stop').addEventListener('click', () => knuStop());
+  $('knu-retry').addEventListener('click', () => {
+    knuApi('navigate').then(() => knuStatus('자동 이동을 다시 시도합니다.')).catch((error) => knuStatus(error.message));
+  });
+  $('knu-apply').addEventListener('click', knuApply);
+
+  capture.addEventListener('click', (event) => {
+    capture.focus();
+    const box = capture.getBoundingClientRect();
+    knuSend({
+      type: 'click',
+      x: clamp(Math.round((event.clientX - box.left) * 1280 / box.width), 0, 1280),
+      y: clamp(Math.round((event.clientY - box.top) * 800 / box.height), 0, 800),
+    });
+  });
+  capture.addEventListener('keydown', (event) => {
+    if (event.isComposing || event.key === 'Process') return;  // 한글 입력은 아래 칸을 쓴다
+    if (event.ctrlKey || event.metaKey || event.altKey) return;  // 붙여넣기는 paste 이벤트로 처리
+    if (event.key.length === 1) {
+      event.preventDefault();
+      knuSend({ type: 'text', text: event.key });
+    } else if (KNU_KEYS.has(event.key)) {
+      event.preventDefault();
+      knuSend({ type: 'key', key: event.key === 'Tab' && event.shiftKey ? 'Shift+Tab' : event.key });
+    }
+  });
+  capture.addEventListener('paste', (event) => {
+    const text = (event.clipboardData?.getData('text') || '').slice(0, 200);
+    if (!text) return;
+    event.preventDefault();
+    knuSend({ type: 'text', text });
+  });
+  capture.addEventListener('wheel', (event) => {
+    event.preventDefault();
+    state.knu.wheel += event.deltaY;
+    if (state.knu.wheelTimer) return;
+    state.knu.wheelTimer = setTimeout(() => {
+      knuSend({ type: 'scroll', delta: clamp(state.knu.wheel, -2000, 2000) });
+      state.knu.wheel = 0;
+      state.knu.wheelTimer = null;
+    }, 120);
+  }, { passive: false });
+
+  const sendText = () => {
+    const text = $('knu-text').value;
+    if (!text) return;
+    knuSend({ type: 'text', text });
+    $('knu-text').value = '';
+  };
+  $('knu-text-send').addEventListener('click', sendText);
+  $('knu-text').addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); sendText(); } });
+  $('knu-text-toggle').addEventListener('click', () => {
+    const show = $('knu-text').type === 'password';
+    $('knu-text').type = show ? 'text' : 'password';
+    $('knu-text-toggle').textContent = show ? '가리기' : '보이기';
+    $('knu-text-toggle').setAttribute('aria-pressed', String(show));
+  });
+
+  // 페이지를 닫거나 떠나면 서버의 브라우저를 바로 닫는다.
+  window.addEventListener('pagehide', () => {
+    if (!state.knu.token) return;
+    const body = new Blob([JSON.stringify({ session: state.knu.token })], { type: 'application/json' });
+    navigator.sendBeacon('/import/knu/stop', body);
+  });
+}
+
+async function knuInit() {
+  try {
+    const response = await fetch('/import/knu/status');
+    const status = await response.json();
+    if (status.available) {
+      $('knu-box').hidden = false;
+      $('knu-idle').textContent = status.idle_minutes;
+      knuSetup();
+    } else if (status.reason) {
+      $('knu-off').hidden = false;
+      $('knu-off').textContent = `학사시스템에서 불러오기: ${status.reason}`;
+    }
+  } catch (error) { /* 상태를 몰라도 직접 입력은 쓸 수 있다 */ }
+}
+
+function historySetup() {
+  $('add-history').addEventListener('click', addTypedCourse);
+  $('paste-add').addEventListener('click', addPastedCourses);
+  $('history-clear').addEventListener('click', () => {
+    state.history = [];
+    saveHistory();
+    renderHistory();
+    updateSide();
+  });
+  // 이수 과목 칸에서 Enter 를 눌러도 다음 항목으로 넘어가지 않게 한다.
+  $('sec-history').addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' || event.target.tagName !== 'INPUT') return;
+    event.preventDefault();
+    if (event.target.closest('.add-row')) addTypedCourse();
+  });
+}
+
 /* ---------- 시작 ---------- */
 
 async function init() {
+  loadHistory();
+  renderHistory();
+  historySetup();
+  knuInit();
   dayToggles($('preferred-days'), 'preferred');
   dayToggles($('blocked-days'), 'blocked');
   $('conditions').addEventListener('submit', submitConditions);

@@ -1,0 +1,3 @@
+-r requirements.txt
+# 경북대 이수 과목 불러오기 (실험 기능)에만 필요하다. 쓰지 않으면 설치하지 않아도 된다.
+playwright

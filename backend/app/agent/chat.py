@@ -151,10 +151,12 @@ def from_ai_conditions(
     code_by_name = {course.name: course.course_code for course in courses}
     dropped: list[str] = []
 
-    def codes(items: list[str]) -> list[str]:
+    def codes(items: list[str], keep: frozenset[str] = frozenset()) -> list[str]:
         result: list[str] = []
         for item in items:
             code = item if item in known_codes else code_by_name.get(item)
+            if code is None and item in keep:
+                code = item  # 원래 조건에 있던 값은 이번 학기에 개설되지 않았어도 그대로 둔다
             if code is None:
                 dropped.append(item)
             elif code not in result:
@@ -163,7 +165,12 @@ def from_ai_conditions(
 
     must_include = codes(conditions.must_include)
     exclude = [code for code in codes(conditions.exclude) if code not in must_include]
-    completed = [code for code in codes(conditions.completed) if code not in must_include]
+    # 이수 과목은 대부분 이번 학기에 열리지 않는 과목이다. 학생이 불러온 목록을 지우지 않는다.
+    completed = [
+        code
+        for code in codes(conditions.completed, keep=frozenset(base.completed))
+        if code not in must_include
+    ]
 
     blocked: list[TimeBlock] = []
     for block in conditions.blocked_times:
