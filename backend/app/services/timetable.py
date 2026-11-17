@@ -10,13 +10,16 @@ AI 를 쓰지 않는 순수한 계산이다. 여기서 나온 시간표는 항�
 import random
 from collections import defaultdict
 
-from app.schemas import Course, Meeting, Timetable, TimetableRequest, TimetableResult, TimeBlock
-from app.services.course_time import DAYS, courses_conflict, meetings_overlap
+from app.schemas import Course, Timetable, TimetableRequest, TimetableResult, TimeBlock
+from app.services.course_time import DAYS, courses_conflict
 
 WEEKDAYS = "월화수목금"
+EXACT_CODES = 40  # 과목이 이보다 적으면 모든 경우를 따져 본다
 EXACT_NODES = 5_000  # 이 한도 안에 끝나면 모든 경우를 다 따져 본 것이다
-RESTARTS = 40  # 한도를 넘으면 과목 순서를 바꿔 가며 여러 번 짧게 탐색한다
+RESTARTS = 80  # 과목이 많으면 일부만 뽑아, 뽑는 과목을 바꿔 가며 여러 번 짧게 탐색한다
 RESTART_NODES = 300
+SAMPLE_CODES = 60  # 한 번 탐색할 때 뽑는 과목 수
+SAMPLE_PER_CATEGORY = 12  # 그중 꼭 채워야 하는 영역마다 넣는 과목 수
 SLOT_MINUTES = 5
 SLOTS_PER_DAY = 24 * 60 // SLOT_MINUTES
 
@@ -26,13 +29,17 @@ def _minutes(hhmm: str) -> int:
     return int(hours) * 60 + int(minutes)
 
 
-def _is_blocked(course: Course, blocks: list[TimeBlock]) -> bool:
+def _block_mask(blocks: list[TimeBlock]) -> int:
+    """수업을 넣으면 안 되는 시간대를 _time_mask 와 같은 비트로 표시한다."""
+    mask = 0
     for block in blocks:
+        first = _minutes(block.start) // SLOT_MINUTES
+        last = -(-_minutes(block.end) // SLOT_MINUTES)
+        span = ((1 << max(0, last - first)) - 1) << first
         for day in block.day or DAYS:
-            window = Meeting(day=day, start=block.start, end=block.end)
-            if any(meetings_overlap(meeting, window) for meeting in course.meetings):
-                return True
-    return False
+            if day in DAYS:
+                mask |= span << (DAYS.index(day) * SLOTS_PER_DAY)
+    return mask
 
 
 def _is_full(course: Course) -> bool:
@@ -145,13 +152,17 @@ def generate_timetables(courses: list[Course], request: TimetableRequest) -> Tim
     )
 
     # 1. 들을 수 있는 분반만 남긴다.
-    pool: list[Course] = [
-        course
-        for course in courses
-        if course.course_code not in skip_codes
-        and not _is_blocked(course, request.blocked_times)
-        and not (request.exclude_full and _is_full(course))
-    ]
+    blocked = _block_mask(request.blocked_times)
+    pool: list[Course] = []
+    masks: list[int] = []
+    for course in courses:
+        if course.course_code in skip_codes or (request.exclude_full and _is_full(course)):
+            continue
+        mask = _time_mask(course)
+        if mask & blocked:
+            continue
+        pool.append(course)
+        masks.append(mask)
     by_code: dict[str, list[int]] = defaultdict(list)
     for index, course in enumerate(pool):
         by_code[course.course_code].append(index)
@@ -167,7 +178,6 @@ def generate_timetables(courses: list[Course], request: TimetableRequest) -> Tim
         )
 
     # 2. 탐색을 빠르게 하려고 분반마다 필요한 값을 미리 계산해 둔다.
-    masks = [_time_mask(course) for course in pool]
     credits_of = [course.credits for course in pool]
     category_of = [course.category for course in pool]
     code_of = [course.course_code for course in pool]
@@ -175,9 +185,34 @@ def generate_timetables(courses: list[Course], request: TimetableRequest) -> Tim
         any(meeting.day in request.preferred_free_days for meeting in course.meetings)
         for course in pool
     ]
+    slots_of = [
+        [(DAYS.index(m.day), _minutes(m.start), _minutes(m.end)) for m in course.meetings]
+        for course in pool
+    ]
+    kept_ids = set(request.prefer_courses)
+    is_kept = [course.course_id in kept_ids for course in pool]
+    preferred_days = [DAYS.index(day) for day in request.preferred_free_days if day in DAYS]
     needed = {category: need for category, need in request.required_credits.items() if need > 0}
     must = [by_code[code] for code in sorted(must_codes)]
     optional_codes = sorted(code for code in by_code if code not in must_codes)
+
+    def quick_score(chosen: list[int]) -> float:
+        """summarize 와 같은 점수를, 탐색 중에 쓸 수 있도록 가볍게 계산한다."""
+        by_day: dict[int, list[tuple[int, int]]] = {}
+        credits, kept = 0.0, 0
+        for index in chosen:
+            credits += credits_of[index]
+            kept += is_kept[index]
+            for day, start, end in slots_of[index]:
+                by_day.setdefault(day, []).append((start, end))
+        gap = 0
+        for slots in by_day.values():
+            if len(slots) > 1:
+                slots.sort()
+                gap += sum(max(0, later[0] - earlier[1]) for earlier, later in zip(slots, slots[1:]))
+        free = sum(1 for day in range(len(WEEKDAYS)) if day not in by_day)
+        met = sum(1 for day in preferred_days if day not in by_day)
+        return 10 * met + 4 * kept + 2 * free + credits - gap / 60
 
     found: dict[frozenset[int], float] = {}
     state = {"nodes": 0, "limit": 0}
@@ -226,11 +261,7 @@ def generate_timetables(courses: list[Course], request: TimetableRequest) -> Tim
         if credits >= request.min_credits and deficit == 0:
             key = frozenset(chosen)
             if key not in found:
-                found[key] = summarize(
-                    [pool[index] for index in chosen],
-                    request.preferred_free_days,
-                    request.prefer_courses,
-                ).score
+                found[key] = quick_score(chosen)
 
         chosen_codes = {code_of[index] for index in chosen}
         for position in range(start, len(order)):
@@ -249,16 +280,33 @@ def generate_timetables(courses: list[Course], request: TimetableRequest) -> Tim
         search(0, order, 0, [], 0, 0.0, {})
         return state["nodes"] < limit
 
-    # 3. 과목이 적으면 모든 경우를 따져 보고, 많으면 순서를 바꿔 가며 여러 번 탐색한다.
-    exhaustive = run(optional_codes, EXACT_NODES)
+    # 3. 과목이 적으면 모든 경우를 따져 본다. 많으면 매번 일부 과목만 뽑아 짧게 탐색하고,
+    #    뽑는 과목을 바꿔 가며 여러 번 되풀이한다. (전체를 매번 훑으면 과목 수천 개에서 수 초가 걸린다.)
+    exhaustive = len(optional_codes) <= EXACT_CODES and run(optional_codes, EXACT_NODES)
     if not exhaustive:
         rng = random.Random(0)  # 같은 요청에는 같은 결과가 나오도록 고정
+        # 지금 시간표의 과목은 항상 후보에 넣어, 수정 요청 뒤에도 시간표가 크게 바뀌지 않게 한다.
+        always = [code for code in optional_codes if any(is_kept[i] for i in by_code[code])]
+        codes_by_category: dict[str, list[str]] = {category: [] for category in needed}
+        for code in optional_codes:
+            category = category_of[by_code[code][0]]
+            if category in codes_by_category:
+                codes_by_category[category].append(code)
+
         for _ in range(RESTARTS):
-            keys = {code: rng.random() for code in optional_codes}
-            # 공강 희망 요일에 수업이 없는 과목을 먼저 시도한다.
+            picked = list(always)
+            for codes in codes_by_category.values():  # 꼭 채워야 하는 영역의 과목
+                picked += rng.sample(codes, min(SAMPLE_PER_CATEGORY, len(codes)))
+            picked += rng.sample(optional_codes, min(SAMPLE_CODES, len(optional_codes)))
+            keys = {code: rng.random() for code in dict.fromkeys(picked)}
+            # 지금 시간표의 과목, 공강 희망 요일에 수업이 없는 과목 순으로 먼저 시도한다.
             code_order = sorted(
-                optional_codes,
-                key=lambda code: (all(on_preferred_day[i] for i in by_code[code]), keys[code]),
+                keys,
+                key=lambda code: (
+                    not any(is_kept[i] for i in by_code[code]),
+                    all(on_preferred_day[i] for i in by_code[code]),
+                    keys[code],
+                ),
             )
             run(code_order, RESTART_NODES)
 
