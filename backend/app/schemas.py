@@ -95,7 +95,7 @@ class KnuStartResponse(BaseModel):
 class KnuInput(BaseModel):
     """원격 학교 화면에 보내는 입력 하나."""
 
-    type: Literal["click", "key", "text", "scroll"]
+    type: Literal["click", "key", "text", "scroll", "move"]
     x: float | None = Field(default=None, ge=0, le=1280)
     y: float | None = Field(default=None, ge=0, le=800)
     key: str | None = Field(default=None, max_length=20)
@@ -115,6 +115,8 @@ class KnuFrame(BaseModel):
     courses: list[ImportedCourse] = Field(default_factory=list)
     duplicates: list[str] = Field(default_factory=list, description="여러 번 나온 과목코드")
     expires_in: int = Field(description="이 연결이 자동으로 닫히기까지 남은 초")
+    logged_in: bool = Field(default=False, description="로그인을 마쳐 학교 화면을 가려도 되는지")
+    needs_help: bool = Field(default=False, description="자동 이동이 오래 걸려 학생이 화면을 직접 봐야 하는지")
 
 
 class KnuStopRequest(BaseModel):

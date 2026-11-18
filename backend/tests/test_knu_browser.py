@@ -22,14 +22,18 @@ from app.services.knu_session import KnuSessionManager
 pytestmark = pytest.mark.skipif(not knu_session.playwright_installed(), reason="Playwright 가 설치되어 있지 않음")
 
 # 실제 학교에서 생길 수 있는 세 가지를 넣었다.
-# 1) 로그인 전에도 '학사행정' 메뉴가 보인다. 미리 눌러도 로그인하면 메뉴가 닫힌 상태로 다시 그려진다.
+# 1) 로그인 전에도 '성적' 메뉴가 보인다. 미리 눌러도 로그인하면 메뉴가 닫힌 상태로 다시 그려진다.
+#    메뉴는 성적 → 학기성적 → 이수성적 조회 순서로 펼쳐지고, 누르면 안 되는 '학사행정'도 함께 보인다.
 # 2) 로그인하면 공지 팝업 창이 뜬다.
 # 3) 이수성적 조회 화면은 '조회' 버튼을 눌러야 목록을 보낸다.
+# 4) 로그인 직후 투명한 막이 '성적' 메뉴를 덮어 일반 클릭이 막힌다.
 MOCK_PAGE = """<!doctype html><html lang="ko"><meta charset="utf-8"><title>가짜 학사시스템</title>
 <style>body{font:16px sans-serif;margin:40px} input,button{font-size:18px;margin:6px;padding:6px}</style>
 <nav id="menu">
-  <a href="#" onclick="document.getElementById('sub').hidden=false;return false">학사행정</a>
-  <div id="sub" hidden><a href="#" onclick="openGrades();return false">이수성적 조회</a></div>
+  <a href="#" onclick="window.wrongMenu=true;return false">학사행정</a>
+  <span style="position:relative;display:inline-block"><a href="#" onclick="document.getElementById('sub').hidden=false;return false">성적</a><span id="cover" hidden style="position:absolute;inset:0;background:transparent"></span></span>
+  <div id="sub" hidden><a href="#" onclick="document.getElementById('sub2').hidden=false;return false">학기성적</a></div>
+  <div id="sub2" hidden><a href="#" onclick="openGrades();return false">이수성적 조회</a></div>
 </nav>
 <div id="login">
   <input id="uid" aria-label="아이디"><input id="pwd" type="password" aria-label="비밀번호">
@@ -41,6 +45,8 @@ MOCK_PAGE = """<!doctype html><html lang="ko"><meta charset="utf-8"><title>가�
 function show(){
   document.getElementById('login').hidden=true;
   document.getElementById('sub').hidden=true;  // 로그인하면 메뉴가 닫힌 상태로 다시 그려진다
+  document.getElementById('sub2').hidden=true;
+  document.getElementById('cover').hidden=false;  // 로그인 직후 투명한 막이 '성적' 메뉴를 덮는다
 }
 function login(){
   if(document.getElementById('uid').value==='student' && document.getElementById('pwd').value){
@@ -135,7 +141,7 @@ def test_full_flow_against_a_mock_school(school, caplog):
     assert send({"type": "text", "text": secret}).status_code == 200
     assert send({"type": "click", **center(school, token, "#login-btn")}).status_code == 200
 
-    # 학생은 더 누르지 않는다. 자동으로 학사행정 → 이수성적 조회 → 조회 버튼까지 눌러 응답을 읽는다.
+    # 학생은 더 누르지 않는다. 자동으로 성적 → 학기성적 → 이수성적 조회 → 조회 버튼까지 눌러 응답을 읽는다.
     began = time.time()
     deadline = began + 60
     frame, statuses = {}, []
@@ -148,7 +154,9 @@ def test_full_flow_against_a_mock_school(school, caplog):
         time.sleep(0.5)
     assert frame["finished"], statuses
     assert time.time() - began < 10, statuses  # 고치기 전에는 약 14초
-    assert any("학사행정" in status for _, status in statuses), statuses
+    assert set(school._sessions[token].visited_menus) == {"성적", "학기성적"}, statuses  # 화면 폴링이 문구를 놓칠 수 있어 기록으로 확인
+    main = school._sessions[token].context.pages[0]
+    assert call(school, main.evaluate("window.wrongMenu === true")) is False  # 학사행정은 누르지 않았다
     assert school._sessions[token].query_clicks == 1  # 조회 버튼을 자동으로 한 번 눌렀다
     assert len(school._sessions[token].context.pages) == 2  # 공지 팝업이 떠 있어도 진행했다
     assert [(c["code"], c["credits"], c["category"]) for c in frame["courses"]] == [

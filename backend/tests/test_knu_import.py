@@ -64,7 +64,8 @@ def test_extract_courses_rejects_unexpected_shapes(payload):
 class FakePage:
     def __init__(self, context):
         self.context, self.closed, self.frames, self.actions = context, False, [], []
-        self.mouse = SimpleNamespace(click=self._click, wheel=self._wheel)
+        self.mouse = SimpleNamespace(click=self._click, wheel=self._wheel, move=self._move)
+        self.cursor = "pointer"  # 마우스 자리의 모양 (evaluate 가 돌려준다)
         self.keyboard = SimpleNamespace(press=self._press, insert_text=self._text)
         self.main_frame, self.handlers, self.went_back = SimpleNamespace(url="about:blank"), {}, 0
 
@@ -94,6 +95,12 @@ class FakePage:
 
     async def _click(self, x, y):
         self.actions.append(("click", x, y))
+
+    async def _move(self, x, y):
+        self.actions.append(("move", x, y))
+
+    async def evaluate(self, script, arg=None):
+        return self.cursor
 
     async def _wheel(self, dx, dy):
         self.actions.append(("scroll", dy))
@@ -181,8 +188,14 @@ def respond(fake, context, url, payload):
 # ---------- 켜짐/꺼짐과 접근 제한 ----------
 
 
-def test_feature_is_off_by_default(monkeypatch):
+def test_feature_is_on_by_default(monkeypatch):
     monkeypatch.delenv("KNU_IMPORT_ENABLED", raising=False)
+    status = TestClient(app, client=LOCAL).get("/import/knu/status").json()
+    assert status["enabled"] is True
+
+
+def test_feature_can_be_turned_off(monkeypatch):
+    monkeypatch.setenv("KNU_IMPORT_ENABLED", "0")
     client = TestClient(app, client=LOCAL)
     status = client.get("/import/knu/status").json()
     assert status["enabled"] is False and status["available"] is False
@@ -239,6 +252,19 @@ def test_unknown_or_missing_token_is_rejected(fake):
     assert fake.client.post("/import/knu/frame").status_code == 404
     assert fake.client.post("/import/knu/frame", headers=header("guess")).status_code == 404
     assert fake.client.post("/import/knu/input", json={"type": "text", "text": "a"}).status_code == 404
+
+
+def test_mouse_move_returns_cursor_shape(fake):
+    token = start(fake.client).json()["session"]
+    page = fake.browser.contexts[0].pages[0]
+    send = lambda body: fake.client.post("/import/knu/input", json=body, headers=header(token))
+
+    response = send({"type": "move", "x": 10, "y": 20})
+    assert response.status_code == 200 and response.json()["cursor"] == "pointer"
+    assert page.actions == [("move", 10, 20)]
+    page.cursor = "url(evil.cur), auto"  # 정해 둔 모양이 아니면 기본 화살표로 보낸다
+    assert send({"type": "move", "x": 10, "y": 20}).json()["cursor"] == "default"
+    assert send({"type": "click", "x": 10, "y": 20}).json()["cursor"] is None
 
 
 def test_inputs_are_relayed_and_limited(fake):
@@ -391,9 +417,15 @@ def test_typed_text_never_reaches_the_logs(fake, caplog):
     assert token not in caplog.text
 
 
+COVERED_ERROR = 'Locator.click: Timeout 1500ms exceeded.\n  - <div class="overlay"></div> intercepts pointer events'
+
+
 class FakeLocator:
-    def __init__(self, found, clicks=None, name=""):
+    """요소 하나. fail 이면 일반 클릭이 실패하고(가려짐), dispatch_fail 이면 클릭 이벤트도 실패한다."""
+
+    def __init__(self, found, clicks=None, name="", fail=False, dispatch_fail=False):
         self.found, self.clicks, self.name = found, clicks if clicks is not None else [], name
+        self.fail, self.dispatch_fail = fail, dispatch_fail
 
     async def count(self):
         return 1 if self.found else 0
@@ -405,23 +437,57 @@ class FakeLocator:
         return self.found
 
     async def click(self, timeout):
+        if getattr(self, "track", False):  # 일반 클릭을 시도했는지도 남긴다
+            self.clicks.append(("try", self.name))
+        if self.fail:
+            raise TimeoutError(COVERED_ERROR)
+        self.clicks.append(self.name)
+
+    async def dispatch_event(self, event, timeout=None):
+        if self.dispatch_fail:
+            raise TimeoutError("Locator.dispatch_event: Timeout 1500ms exceeded.")
         self.clicks.append(self.name)
 
     def or_(self, other):
         return self if self.found else other
 
 
-class FakeFrame:
-    """보이는 글자 목록과 비밀번호 칸 여부만 흉내 낸다. 누른 글자를 clicks 에 남긴다."""
+class FakeGroup:
+    """같은 글자를 가진 요소 여러 개."""
 
-    def __init__(self, labels, password=False):
+    def __init__(self, items):
+        self.items = items
+
+    async def count(self):
+        return len(self.items)
+
+    def nth(self, index):
+        return self.items[index]
+
+    def or_(self, other):
+        return self if self.items else other
+
+
+class FakeFrame:
+    """보이는 글자 목록과 비밀번호 칸 여부만 흉내 낸다. 누른 글자를 clicks 에 남긴다.
+
+    failing 에 글자를 넣으면 그 글자의 일반 클릭이 실패하고, "글자#n" 이면 n 번째 같은 글자만 실패한다.
+    dead 에 넣으면 클릭 이벤트까지 실패한다.
+    """
+
+    def __init__(self, labels, password=False, failing=(), dead=()):
         self.labels, self.password, self.clicks = list(labels), password, []
+        self.failing, self.dead = set(failing), set(dead)
 
     def _match(self, text, exact=False):
+        items, seen = [], {}
         for label in self.labels:
-            if (text.match(label) if hasattr(text, "match") else label == text):
-                return FakeLocator(True, self.clicks, label)
-        return FakeLocator(False)
+            if text.match(label) if hasattr(text, "match") else label == text:
+                n = seen[label] = seen.get(label, -1) + 1
+                keys = {label, f"{label}#{n}"}
+                items.append(FakeLocator(True, self.clicks, label, fail=bool(keys & (self.failing | self.dead)),
+                                         dispatch_fail=bool(keys & self.dead)))
+        return FakeGroup(items)
 
     def get_by_text(self, text, exact=False):
         return self._match(text, exact)
@@ -443,7 +509,7 @@ def test_auto_navigation_waits_for_login_and_menus(fake):
     page = fake.browser.contexts[0].pages[0]
 
     # 비밀번호 칸이 보이면 메뉴가 보여도 누르지 않는다 (로그인 전).
-    page.frames = [FakeFrame(["학사행정", "이수성적 조회"], password=True)]
+    page.frames = [FakeFrame(["성적", "이수성적 조회"], password=True)]
     for _ in range(5):
         assert step(fake, session) is False
     assert page.frames[0].clicks == []
@@ -453,6 +519,31 @@ def test_auto_navigation_waits_for_login_and_menus(fake):
     page.frames = [FakeFrame([])]
     for _ in range(200):
         assert step(fake, session) is False
+
+
+def test_screen_is_covered_after_login_and_shown_when_help_is_needed(fake):
+    token = start(fake.client).json()["session"]
+    session = fake.manager._sessions[token]
+    page = fake.browser.contexts[0].pages[0]
+    frame = lambda: fake.client.post("/import/knu/frame", headers=header(token)).json()
+
+    page.frames = [FakeFrame([], password=True)]
+    step(fake, session)
+    assert frame()["logged_in"] is False  # 로그인 중에는 학교 화면을 보여 준다
+
+    page.frames = [FakeFrame([])]
+    session.last_navigation = 0
+    step(fake, session)
+    body = frame()
+    assert body["logged_in"] is True and body["needs_help"] is False  # 로그인 뒤에는 가린다
+
+    session.login_at -= knu_session.HELP_AFTER_LOGIN + 1
+    assert frame()["needs_help"] is True  # 오래 걸리면 화면을 다시 보여 준다
+
+    page.frames = [FakeFrame([], password=True)]
+    session.last_navigation = 0
+    step(fake, session)
+    assert frame()["logged_in"] is False  # 다시 로그인해야 하면 화면을 보여 준다
 
 
 def test_auto_navigation_presses_query_button_then_gives_up(fake):
@@ -483,7 +574,7 @@ def test_auto_navigation_looks_in_every_window_and_retries_parent_menus(fake):
     session = fake.manager._sessions[token]
     context = fake.browser.contexts[0]
     main = context.pages[0]
-    main.frames = [FakeFrame(["학사행정"])]
+    main.frames = [FakeFrame(["성적"])]
 
     # 공지 팝업이 떠서 그 창을 보여 주고 있어도, 원래 창의 메뉴를 찾는다.
     popup = FakePage(context)
@@ -491,11 +582,138 @@ def test_auto_navigation_looks_in_every_window_and_retries_parent_menus(fake):
     context.pages.append(popup)
     open_popup(fake, session, popup)
     assert step(fake, session) is False
-    assert main.frames[0].clicks == ["학사행정"]
+    assert main.frames[0].clicks == ["성적"]
     assert session.page is main  # 누른 창을 보여 준다
 
     # 상위 메뉴는 바로 다시 누르지 않지만, 시간이 지나도 못 찾으면 다시 눌러 본다.
     assert step(fake, session) is False and len(main.frames[0].clicks) == 1
-    session.visited_menus["학사행정"] -= 60
+    session.visited_menus["성적"] -= 60
     session.wait_until = 0  # 방금 누른 메뉴의 결과를 기다리는 시간도 지난 것처럼
     assert step(fake, session) is False and len(main.frames[0].clicks) == 2
+
+
+def test_auto_navigation_follows_grade_menu_path_only(fake):
+    token = start(fake.client).json()["session"]
+    session = fake.manager._sessions[token]
+    page = fake.browser.contexts[0].pages[0]
+
+    # 성적 → 학기성적 → 이수성적조회 순서로만 누른다. 다른 메뉴(학사행정 등)는 누르지 않는다.
+    frame = FakeFrame(["학사행정", "수업/성적", "성적"])
+    page.frames = [frame]
+    assert step(fake, session) is False and frame.clicks == ["성적"]
+    frame.labels.append("학기성적")
+    session.wait_until = 0
+    assert step(fake, session) is False and frame.clicks == ["성적", "학기성적"]  # 성적을 다시 누르지 않는다
+    frame.labels.append("이수성적조회")
+    session.wait_until = 0
+    assert step(fake, session) is False and frame.clicks == ["성적", "학기성적", "이수성적조회"]
+    assert "학사행정" not in frame.clicks and "수업/성적" not in frame.clicks
+
+
+def test_covered_menu_gets_a_direct_click_event(fake):
+    token = start(fake.client).json()["session"]
+    session = fake.manager._sessions[token]
+    frame = FakeFrame(["성적"], failing={"성적"})  # 다른 요소에 가려져 일반 클릭은 실패한다
+    fake.browser.contexts[0].pages[0].frames = [frame]
+    assert step(fake, session) is False and frame.clicks == ["성적"]  # 클릭 이벤트를 직접 보내 눌렀다
+
+
+def test_after_popup_blocks_a_click_later_clicks_go_direct(fake):
+    token = start(fake.client).json()["session"]
+    session = fake.manager._sessions[token]
+    session.direct_click = False  # 일반 클릭부터 시작하는 경우
+    covered = FakeLocator(True, name="성적", fail=True)
+    covered.track = True
+    run(fake.manager, fake.manager._click(session, None, covered, "성적", 0))
+    assert session.direct_click is True
+    assert covered.clicks == [("try", "성적"), "성적"]  # 일반 클릭 시도 → 직접 클릭
+
+    target = FakeLocator(True, name="이수성적조회")
+    target.track = True
+    run(fake.manager, fake.manager._click(session, None, target, "이수성적조회", 0))
+    assert target.clicks == ["이수성적조회"]  # 일반 클릭(1.5초 대기)을 건너뛰고 바로 직접 보냈다
+
+
+def test_clicks_go_direct_from_the_start(fake):
+    token = start(fake.client).json()["session"]
+    session = fake.manager._sessions[token]
+    assert session.direct_click is True  # 학교 화면에는 팝업 막이 늘 있어 처음부터 직접 보낸다
+    menu = FakeLocator(True, name="성적")
+    menu.track = True
+    run(fake.manager, fake.manager._click(session, None, menu, "성적", 0))
+    assert menu.clicks == ["성적"]  # 일반 클릭 없이 바로 직접 보냈다
+
+
+def test_direct_click_failure_falls_back_to_normal_click(fake):
+    token = start(fake.client).json()["session"]
+    session = fake.manager._sessions[token]
+    menu = FakeLocator(True, name="성적", dispatch_fail=True)
+    menu.track = True
+    run(fake.manager, fake.manager._click(session, None, menu, "성적", 0))
+    assert menu.clicks == [("try", "성적"), "성적"]  # 직접 보내기 실패 → 일반 클릭으로 눌렀다
+
+
+def test_no_click_once_courses_arrived(fake):
+    token = start(fake.client).json()["session"]
+    session = fake.manager._sessions[token]
+    button = FakeLocator(True, name="조회")
+    session.finished = True  # 요소를 찾는 사이 목록이 도착했다
+    run(fake.manager, fake.manager._click(session, None, button, "조회", 0))
+    assert button.clicks == []
+
+
+def test_click_failure_reason_is_short_and_readable():
+    error = TimeoutError(COVERED_ERROR + "\n  - retrying click action")
+    reason = KnuSessionManager._reason(error)
+    assert "intercepts pointer events" in reason and len(reason) <= 200
+
+
+def test_failed_menu_click_is_retried_soon(fake):
+    token = start(fake.client).json()["session"]
+    session = fake.manager._sessions[token]
+    frame = FakeFrame(["성적"], dead={"성적"})
+    fake.browser.contexts[0].pages[0].frames = [frame]
+
+    assert step(fake, session) is False and frame.clicks == []
+    assert session.wait_until == 0  # 누르지 못했으니 기다리지 않는다
+    frame.dead.clear()
+    assert step(fake, session) is False and frame.clicks == []  # 바로 연달아 누르지는 않는다
+    session.visited_menus["성적"] -= knu_session.RETRY_AFTER_FAILED_CLICK  # 1초가 지난 것처럼 (15초가 아니라)
+    assert step(fake, session) is False and frame.clicks == ["성적"]
+
+
+def test_menu_tries_each_visible_match_in_turn(fake):
+    token = start(fake.client).json()["session"]
+    session = fake.manager._sessions[token]
+    # 화면에 '성적'이 두 개 있고, 첫 번째는 눌리지 않는다 (다른 곳의 글자).
+    frame = FakeFrame(["성적", "성적"], dead={"성적#0"})
+    fake.browser.contexts[0].pages[0].frames = [frame]
+    assert step(fake, session) is False and frame.clicks == []
+    session.visited_menus["성적"] -= knu_session.RETRY_AFTER_FAILED_CLICK
+    assert step(fake, session) is False and frame.clicks == ["성적"]  # 두 번째 '성적'을 눌렀다
+
+
+def test_fallback_menu_after_repeated_failures(fake):
+    token = start(fake.client).json()["session"]
+    session = fake.manager._sessions[token]
+    frame = FakeFrame(["학사행정", "성적"], dead={"성적"})
+    fake.browser.contexts[0].pages[0].frames = [frame]
+    for _ in range(knu_session.FALLBACK_AFTER):
+        assert step(fake, session) is False
+        session.visited_menus["성적"] -= knu_session.RETRY_AFTER_FAILED_CLICK
+    assert frame.clicks == []  # 아직 학사행정은 누르지 않았다
+    assert step(fake, session) is False and frame.clicks == ["학사행정"]
+    # 학사행정은 한 번만 누르고, 그 뒤에는 다시 '성적'을 시도한다.
+    frame.dead.clear()
+    session.visited_menus["성적"] -= knu_session.RETRY_AFTER_FAILED_CLICK
+    session.wait_until = 0
+    assert step(fake, session) is False and frame.clicks == ["학사행정", "성적"]
+
+
+def test_navigation_stops_once_courses_are_read(fake):
+    token = start(fake.client).json()["session"]
+    session = fake.manager._sessions[token]
+    frame = FakeFrame(["이수성적조회", "조회"])
+    fake.browser.contexts[0].pages[0].frames = [frame]
+    session.finished = True
+    assert step(fake, session) is True and frame.clicks == []
