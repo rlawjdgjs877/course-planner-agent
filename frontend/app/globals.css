@@ -80,3 +80,17 @@
 /* More vivid primary actions on the welcome screen. */
 .is-welcome .direct-entry-options .primary-button,.is-welcome .direct-manual-button{background:linear-gradient(180deg,#338bff 0%,#1473f5 100%);border-color:#1470ed;box-shadow:inset 0 1px 0 #72aeff,0 3px 9px #1675f42e;color:#fff}
 .is-welcome .direct-entry-options .primary-button:hover,.is-welcome .direct-manual-button:hover{background:linear-gradient(180deg,#247fff 0%,#0864e4 100%);border-color:#0860df;box-shadow:0 4px 12px #126ee63d}
+
+/* 경북대 통합정보시스템에서 이수 과목 불러오기 */
+.knu-notice ul{margin:10px 0 12px 18px;font-size:13px;line-height:1.7;color:#4a5b70}
+.knu-consent{display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:12px}
+.knu-controls,.knu-typing{display:flex;gap:8px;margin:10px 0}
+.knu-controls button,.knu-typing button{border:1px solid #cfdcec;background:#fff;border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer}
+.knu-typing input{flex:1;min-width:0;border:1px solid #cfdcec;border-radius:8px;padding:7px 10px}
+.knu-screen{position:relative;aspect-ratio:1280/800;width:100%;border:1px solid #cfdcec;border-radius:8px;background:#f4f7fb;display:grid;place-items:center;overflow:hidden;cursor:pointer;color:#7a8aa0;font-size:13px}
+.knu-screen:focus{outline:2px solid #3b82f6;outline-offset:2px}
+.knu-screen img{width:100%;height:100%;object-fit:fill;user-select:none;pointer-events:none}
+.knu-status{font-size:13px;color:#2f5f9e;margin:8px 0}
+.knu-result{margin-top:12px;border-top:1px solid #dce9f7;padding-top:12px}
+.knu-result ul{margin:8px 0 12px 18px;font-size:13px;line-height:1.7;max-height:220px;overflow:auto}
+.knu-result small{color:#7a8aa0}

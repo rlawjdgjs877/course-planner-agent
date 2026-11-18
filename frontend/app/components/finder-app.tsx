@@ -11,6 +11,7 @@ import { StudentProfileCard } from "./student-profile-card";
 import { CourseOfferings } from "./course-offerings";
 import { courseMatchesSource, courseMatchesYear, courseGradeLabel, courseSources } from "../lib/offerings";
 import { AcademicLinkEntry } from "./academic-link-entry";
+import { KnuImport } from "./knu-import";
 import { AcademicInputChoice, type AcademicInputMethod } from "./academic-input-choice";
 import { normalizeAcademicLink } from "../lib/academic-link";
 import { emptyStudentProfile, restoreStudentProfile, type StudentProfile } from "../lib/student-profile";
@@ -86,6 +87,7 @@ export default function FinderApp() {
           <div className="page-heading"><div><div className="step-label">STEP 0{section + 1} <span>/ 나만의 시간표 만들기</span></div><h1>{section === 0 ? "배운 만큼, 체크해 보세요." : section === 1 ? "나의 한 주를 그려 보세요." : "이번 학기, 이렇게 시작해요."}</h1><p>{section === 0 ? "경북대학교 컴퓨터학부 문서의 과목을 체크하고 졸업요건을 확인하세요." : section === 1 ? "원하는 학점과 공강 요일로 나에게 맞는 일주일을 준비해요." : "문서의 미이수 과목과 저장한 희망 조건을 확인하세요."}</p></div><span className="heading-icon"><Icon name={sections[section].icon} size={27} /></span></div>
           {section === 0 && <><div className="chosen-input-method"><span>입력 방법: <strong>{inputMethod === "link" ? "학적 링크 입력" : "직접 입력"}</strong></span><button type="button" onClick={() => { setShowChoice(true); window.scrollTo({ top: 0, behavior: "auto" }); }}>입력 방법 바꾸기</button></div>{inputMethod === "link" ? <AcademicLinkEntry savedLink={academicLink} onSave={setAcademicLink} /> : <StudentProfileCard profile={student} onChange={setStudent} />}</>}
           {section === 0 ? <>
+            <KnuImport onImport={ids => setSelected(prev => [...new Set([...prev, ...ids])])} />
             <CourseOfferings sourceId={sourceFilter} onSourceChange={setSourceFilter} plannedIds={plannedIds} onPlanToggle={togglePlanned} />
             <div className="progress-card"><span className="progress-symbol"><Icon name="check" size={21} /></span><div className="progress-copy"><strong>전공·교양 과목, 차근차근 정리해요</strong><span>PDF와 JSON에 수록된 과목입니다. 분반은 한 과목으로 묶으며 졸업 충족률을 뜻하지 않습니다.</span></div><div className="progress-number"><strong>{selected.length}<span> / {courses.length}</span></strong><small>이수 과목</small></div><div className="progress-track"><div style={{ width: `${selected.length / courses.length * 100}%` }} /></div></div>
             <label className="document-field">이수 체크할 과목 분류<select value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}><option value="all">전체 전공·교양</option>{courseSources.map(source => <option value={source.id} key={source.id}>{source.label}</option>)}</select></label>
