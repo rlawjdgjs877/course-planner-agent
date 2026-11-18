@@ -80,3 +80,41 @@
 /* More vivid primary actions on the welcome screen. */
 .is-welcome .direct-entry-options .primary-button,.is-welcome .direct-manual-button{background:linear-gradient(180deg,#338bff 0%,#1473f5 100%);border-color:#1470ed;box-shadow:inset 0 1px 0 #72aeff,0 3px 9px #1675f42e;color:#fff}
 .is-welcome .direct-entry-options .primary-button:hover,.is-welcome .direct-manual-button:hover{background:linear-gradient(180deg,#247fff 0%,#0864e4 100%);border-color:#0860df;box-shadow:0 4px 12px #126ee63d}
+
+/* ---- 자동 생성 시간표 (백엔드 연결) ---- */
+.button-spinner{width:11px;height:11px;border:2px solid #ffffff80;border-top-color:#fff;border-radius:50%;animation:plann-spin .8s linear infinite}
+@keyframes plann-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.button-spinner{animation-duration:2.4s}}
+.generate-note{color:#98a8ba;font-size:9px;line-height:1.8;margin:10px 0 0}
+.planning-settings .planning-errors[role=alert]{margin-top:12px}
+.generate-empty{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.generate-empty .planning-errors{flex-basis:100%}
+.manual-heading{margin-top:44px}
+.timetable-results .badge{font-size:9px;margin-right:4px}
+.stale-note{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border:1px solid #dbe8f7;background:#f5f9ff;border-radius:7px;padding:11px 14px;color:#5f84ad;font-size:10px;margin:0 0 14px}
+.timetable-results>.manual-plan-issues,.timetable-results>.planning-errors{margin-bottom:14px}
+.candidate-tabs{margin:18px 0 14px}
+.candidate-view .manual-plan-issues{margin:14px 0}
+.result-block{margin:18px 0}
+.result-block h3{font-size:11px;font-weight:600;margin:0 0 10px}
+.omitted-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.omitted-list li{border:1px solid #f1e3cf;background:#fffbf5;border-radius:7px;padding:10px 13px;font-size:10px;color:#7d6a50}
+.omitted-list strong{font-weight:600}
+.omitted-reason{margin-left:8px;font-size:9px;background:#fbecd6;color:#a27a3f;border-radius:4px;padding:2px 6px}
+.omitted-list p{margin:5px 0 0;font-size:9px;color:#a08e74;line-height:1.7}
+.alternative-list{display:grid;gap:8px}
+.alternative-card{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #e3ebf4;background:#fafcff;border-radius:7px;padding:11px 13px}
+.alternative-card strong{display:block;font-size:10px;font-weight:500;color:#3d4b5c}
+.alternative-card small{display:block;font-size:9px;color:#93a0b0;margin-top:4px}
+.week-grid-wrap{overflow-x:auto;margin:6px 0 4px}
+.week-grid{display:grid;min-width:520px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff;position:relative}
+.week-corner,.week-day{background:#f8f9fb;border-bottom:1px solid var(--line);grid-row:1}
+.week-corner{grid-column:1}
+.week-day{display:grid;place-items:center;font-size:10px;font-weight:600;color:#6b7480}
+.week-hour{grid-column:1;font-size:8px;color:#a4a9b0;text-align:right;padding:3px 6px 0 0;border-top:1px solid var(--line)}
+.week-cell{border-top:1px solid var(--line);border-left:1px solid var(--line)}
+.week-block{z-index:1;margin:1px 2px;border-left:3px solid;border-radius:5px;padding:4px 6px;overflow:hidden;display:flex;flex-direction:column;gap:2px;min-width:0}
+.week-block strong{font-size:9px;font-weight:600;color:#2f3640;line-height:1.3;overflow:hidden;text-overflow:ellipsis}
+.week-block small{font-size:8px;color:#6f7884;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.week-unscheduled{font-size:9px;color:#99a3af;margin:8px 0 0}
+@media(max-width:720px){.alternative-card{flex-direction:column;align-items:stretch}.week-grid{min-width:440px}}
