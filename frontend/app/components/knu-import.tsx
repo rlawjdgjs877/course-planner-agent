@@ -46,6 +46,13 @@ export function KnuImport({ onImport }: { onImport: (ids: string[]) => void }) {
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
   const captureRef = useRef<HTMLInputElement>(null);
+  const [loginAt, setLoginAt] = useState<number | null>(null); // 로그인한 시각. 이후로는 화면을 숨긴다
+  const [showScreen, setShowScreen] = useState(false);
+  const [now, setNow] = useState(0);
+  const stuck = /멈췄|찾지 못|읽지 못|열지 못/.test(message);
+  const screenVisible = !result && (loginAt === null || showScreen || loginForm || stuck);
+  const wantImage = useRef(true);
+  wantImage.current = screenVisible;
   const tokenRef = useRef<string | null>(null);
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const wheel = useRef({ sum: 0, timer: 0 });
@@ -55,21 +62,24 @@ export function KnuImport({ onImport }: { onImport: (ids: string[]) => void }) {
   // 연결 중에는 화면을 계속 받아 온다.
   useEffect(() => {
     if (!token) return;
-    let alive = true; let have: string | null = null;
+    let alive = true; let have: string | null = null; let sawLogin = false;
     (async () => {
       while (alive) {
         try {
-          const f = await api("frame", { have }, token);
+          // 화면을 숨긴 동안에는 캡처를 받지 않는다. 서버의 자동 이동이 그만큼 빨라진다.
+          const f = await api("frame", { have, image: wantImage.current }, token);
           if (!alive) break;
           if (f.image) { have = f.frame_id; setImage(`data:image/jpeg;base64,${f.image}`); }
-          setMessage(f.status); setLoginForm(!!f.login_form);
+          setMessage(f.status); setLoginForm(!!f.login_form); setNow(Date.now());
+          if (f.login_form) sawLogin = true;
+          else if (sawLogin) { sawLogin = false; setLoginAt(t => t ?? Date.now()); } // 화면에서 직접 로그인한 경우
           if (f.finished) setResult({ courses: f.courses, duplicates: f.duplicates });
         } catch (e) {
           const err = e as Error & { status?: number };
           if ([403, 404, 503].includes(err.status ?? 0)) { end(err.message); break; }
           setMessage(err.message);
         }
-        await new Promise(r => setTimeout(r, document.hidden ? 1000 : 120));
+        await new Promise(r => setTimeout(r, document.hidden ? 1000 : wantImage.current ? 120 : 300));
       }
     })();
     return () => { alive = false; };
@@ -82,7 +92,7 @@ export function KnuImport({ onImport }: { onImport: (ids: string[]) => void }) {
     return () => { window.removeEventListener("pagehide", close); close(); };
   }, []);
 
-  function end(msg: string) { tokenRef.current = null; setToken(null); setImage(null); setResult(null); setText(""); setPassword(""); setLoginForm(false); setMessage(msg); }
+  function end(msg: string) { tokenRef.current = null; setToken(null); setImage(null); setResult(null); setText(""); setPassword(""); setLoginForm(false); setLoginAt(null); setShowScreen(false); setMessage(msg); }
   async function start() {
     setMessage("학교 화면을 여는 중입니다. 몇 초 걸릴 수 있습니다."); setUnmatched([]);
     try { const { session } = await api("start", { consent }); tokenRef.current = session; setToken(session); }
@@ -105,7 +115,7 @@ export function KnuImport({ onImport }: { onImport: (ids: string[]) => void }) {
     e.preventDefault();
     const body = { user_id: userId, password };
     setPassword(""); // 보낸 뒤 바로 지운다
-    try { await api("login", body, tokenRef.current); setMessage("로그인하는 중입니다. 로그인하면 이수성적 조회까지 자동으로 이동합니다."); }
+    try { await api("login", body, tokenRef.current); setLoginAt(Date.now()); setShowScreen(false); setLoginForm(false); setMessage("로그인하는 중입니다. 로그인하면 이수성적 조회까지 자동으로 이동합니다."); }
     catch (err) { setMessage((err as Error).message); }
   }
   // 숨은 입력칸에 쌓인 글자(영문·숫자, 조합이 끝난 한글)를 보낸다.
@@ -149,14 +159,15 @@ export function KnuImport({ onImport }: { onImport: (ids: string[]) => void }) {
       </ul><label className="knu-consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /> 위 내용을 이해했고, 본인 계정으로만 사용합니다</label>
       <button type="button" className="primary-button" disabled={!consent} onClick={start}>학교 화면 열기<Icon name="arrow" size={15} /></button></div>}
       {token && <>
-        <div className="knu-controls"><button type="button" onClick={() => api("navigate", {}, token).then(() => setMessage("자동 이동을 다시 시도합니다.")).catch(e => setMessage(e.message))}>자동 이동 다시 시도</button><button type="button" onClick={() => stop()}>연결 종료</button></div>
+        <div className="knu-controls">{!result && <button type="button" onClick={() => api("navigate", {}, token).then(() => setMessage("자동 이동을 다시 시도합니다.")).catch(e => setMessage(e.message))}>자동 이동 다시 시도</button>}<button type="button" onClick={() => stop()}>연결 종료</button></div>
         {loginForm && <form className="knu-login" onSubmit={login}><input value={userId} onChange={e => setUserId(e.target.value)} maxLength={100} autoComplete="username" aria-label="학교 아이디" placeholder="학교 아이디" /><input type="password" value={password} onChange={e => setPassword(e.target.value)} maxLength={200} autoComplete="current-password" aria-label="비밀번호" placeholder="비밀번호" /><button type="submit" className="primary-button" disabled={!userId || !password}>로그인</button></form>}
-        <div ref={screenRef} className="knu-screen" onClick={click}>
+        {!screenVisible && !result && <div className="knu-progress" aria-live="polite"><span className="knu-spinner" aria-hidden="true" /><div><strong>이수 과목을 불러오는 중…</strong><small>{loginAt ? `${Math.max(0, Math.round((now - loginAt) / 1000))}초` : ""}</small></div><button type="button" onClick={() => setShowScreen(true)}>화면 보기</button></div>}
+        <div ref={screenRef} className="knu-screen" onClick={click} hidden={!screenVisible}>
           {image ? <img src={image} alt="" draggable={false} /> : <span>학교 화면을 불러오는 중입니다</span>}
           <input ref={captureRef} className="knu-capture" aria-label="원격 학교 화면 키보드 입력. 화면을 누른 뒤 그대로 치면 학교 화면에 입력됩니다." autoComplete="off" onKeyDown={key} onInput={e => { if (!(e.nativeEvent as InputEvent).isComposing) flushCapture(); }} onCompositionEnd={flushCapture} onPaste={e => { const t = e.clipboardData.getData("text").slice(0, 200); e.preventDefault(); if (t) send({ type: "text", text: t }); }} />
         </div>
-        <p className="link-entry-help">학교 화면의 입력칸을 누르고 그대로 키보드로 치면 돼요(한글 포함). 추가 인증이 나오면 화면을 직접 눌러 진행하세요.</p>
-        <details className="knu-fallback"><summary>직접 입력(예비)</summary><div className="knu-typing"><input type={showText ? "text" : "password"} value={text} maxLength={200} autoComplete="off" aria-label="학교 화면에 입력할 글자" placeholder="입력이 잘 안 되면 여기에 적고 보내기" onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); sendText(); } }} /><button type="button" aria-pressed={showText} onClick={() => setShowText(v => !v)}>{showText ? "가리기" : "보이기"}</button><button type="button" onClick={sendText}>보내기</button></div></details>
+        {screenVisible && <><p className="link-entry-help">학교 화면의 입력칸을 누르고 그대로 키보드로 치면 돼요(한글 포함). 추가 인증이 나오면 화면을 직접 눌러 진행하세요.</p>
+        <details className="knu-fallback"><summary>직접 입력(예비)</summary><div className="knu-typing"><input type={showText ? "text" : "password"} value={text} maxLength={200} autoComplete="off" aria-label="학교 화면에 입력할 글자" placeholder="입력이 잘 안 되면 여기에 적고 보내기" onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); sendText(); } }} /><button type="button" aria-pressed={showText} onClick={() => setShowText(v => !v)}>{showText ? "가리기" : "보이기"}</button><button type="button" onClick={sendText}>보내기</button></div></details></>}
       </>}
       {message && <p className="knu-status" aria-live="polite">{message}</p>}
       {result && <div className="knu-result"><strong>읽은 이수 과목 {result.courses.length}개</strong>

@@ -91,7 +91,8 @@ async def frame(
     """원격 화면 한 장과 진행 상태, 읽은 과목. 화면이 바뀌지 않았으면 이미지는 비워 보낸다."""
     _check(request)
     have = body.have if body else None
-    return KnuFrame(**await _call(knu_session.manager.frame(x_import_session, have)))
+    image = body.image if body else True
+    return KnuFrame(**await _call(knu_session.manager.frame(x_import_session, have, image)))
 
 
 @router.post("/input")

@@ -231,7 +231,12 @@ def test_each_student_gets_a_separate_session(fake):
     assert frame_a["finished"] is True
     assert [c["code"] for c in frame_a["courses"]] == ["COMP0201"]
     assert frame_b["finished"] is False and frame_b["courses"] == []
-    assert base64.b64decode(frame_a["image"]).startswith(b"\xff\xd8")
+    # 과목을 다 읽으면 그 학생의 브라우저(학교 세션)는 바로 닫고, 다른 학생은 그대로 둔다.
+    assert context_a.closed and not context_b.closed
+    assert frame_a["image"] is None
+    assert base64.b64decode(frame_b["image"]).startswith(b"\xff\xd8")
+    # 화면을 숨긴 채 상태만 물으면 캡처하지 않는다.
+    assert fake.client.post("/import/knu/frame", json={"image": False}, headers=header(second)).json()["image"] is None
 
 
 def test_unknown_or_missing_token_is_rejected(fake):

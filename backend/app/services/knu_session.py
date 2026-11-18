@@ -17,6 +17,8 @@ Playwright 는 서버의 이벤트 루프와 별개인 전용 스레드에서 �
 import asyncio
 import base64
 import hashlib
+import json
+import logging
 import importlib.util
 import os
 import re
@@ -27,7 +29,7 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 from app.schemas import ImportedCourse, KnuInput
 from app.services.knu_transcript import RESPONSE_MARKER, extract_courses
@@ -37,6 +39,10 @@ VIEWPORT = {"width": 1280, "height": 800}
 TARGET_TEXT = re.compile(r"^\s*이수\s*성적\s*조회\s*$")  # 띄어쓰기가 달라도 찾는다
 PARENT_MENUS = ("학사행정", "수업/성적", "성적")
 QUERY_TEXT = re.compile(r"^\s*조회\s*$")
+logger = logging.getLogger("app.knu_import")
+if not logger.handlers:  # uvicorn 은 앱 로그를 INFO 로 보여 주지 않아서 직접 붙인다
+    logger.addHandler(logging.StreamHandler())
+    logger.setLevel(logging.INFO)
 LOGIN_TEXT = re.compile(r"^\s*로그인\s*$")
 LOGIN_ID_INPUTS ="input[type=text], input[type=email], input:not([type])"  # 아이디 칸 후보
 ALLOWED_KEYS = {
@@ -48,10 +54,10 @@ NAV_PAUSE_AFTER_TYPING = 1.0  # 학생이 글자를 치는 중이면 이만큼 �
 TARGET_CLICK_LIMIT = 3  # 이수성적 조회를 이만큼 눌러도 응답이 없으면 자동 이동을 멈춘다
 QUERY_CLICK_LIMIT = 2  # 이수성적 조회 화면에서 '조회' 버튼을 누르는 최대 횟수
 WAIT_AFTER_MENU = 0.6  # 상위 메뉴를 누른 뒤 하위 메뉴가 그려지기를 기다리는 시간(초)
-WAIT_AFTER_TARGET = 1.5  # 이수성적 조회를 연 뒤 학교가 스스로 목록을 보내는지 기다리는 시간(초)
+WAIT_AFTER_TARGET = 1.0  # 이수성적 조회를 연 뒤 학교가 스스로 목록을 보내는지 기다리는 시간(초)
 WAIT_AFTER_QUERY = 3.0  # 조회 버튼을 누른 뒤 응답을 기다리는 시간(초)
 PARENT_RETRY = 15.0  # 상위 메뉴를 누르고 이만큼 지나도 못 찾으면 다시 눌러 본다
-SETTLE_AFTER_NAVIGATION = 1.0  # 화면이 바뀐 뒤 다 그려지기를 기다리는 시간(초)
+SETTLE_AFTER_NAVIGATION = 0.5  # 화면이 바뀐 뒤 다 그려지기를 기다리는 시간(초)
 NOTICE_SECONDS = 4.0  # 중요한 안내를 보여 주는 최소 시간
 BROWSER_KEEP_SECONDS = 600  # 마지막 연결이 끝나도 Chrome 을 이만큼 켜 두어 다음 시작을 빠르게 한다
 REAP_INTERVAL = 15.0
@@ -128,6 +134,7 @@ class KnuSession:
     finished: bool = False
     closed: bool = False
     login_visible: bool = False  # 학교 로그인 칸(비밀번호 칸)이 보이는지
+    login_at: float = 0.0  # 로그인 칸이 사라진 시각 (걸린 시간 기록용)
     courses: list[ImportedCourse] = field(default_factory=list)
     duplicates: list[str] = field(default_factory=list)
     visited_menus: dict[str, float] = field(default_factory=dict)  # 상위 메뉴를 마지막으로 누른 시각
@@ -223,8 +230,8 @@ class KnuSessionManager:
     async def start(self) -> str:
         return await self._worker.run(self._start(settings()))
 
-    async def frame(self, token: str, have: str | None = None) -> dict:
-        return await self._worker.run(self._frame(token, have))
+    async def frame(self, token: str, have: str | None = None, image: bool = True) -> dict:
+        return await self._worker.run(self._frame(token, have, image))
 
     async def send_input(self, token: str, action: KnuInput) -> None:
         await self._worker.run(self._send_input(token, action))
@@ -274,6 +281,7 @@ class KnuSessionManager:
         self._sessions[session.token] = session
 
         context.on("response", lambda response: self._on_response(session, response))
+        context.on("request", lambda request: self._on_request(session, request))
         context.on("page", lambda page: self._on_page(session, cfg, page))
         try:
             page = await context.new_page()
@@ -326,6 +334,8 @@ class KnuSessionManager:
     def _active_page(self, session: KnuSession) -> Any:
         if session.page is not None and not session.page.is_closed():
             return session.page
+        if session.context is None:  # 과목을 다 읽어 브라우저를 닫았다
+            return None
         pages = [page for page in session.context.pages if not page.is_closed()]
         session.page = pages[-1] if pages else None
         return session.page
@@ -381,9 +391,48 @@ class KnuSessionManager:
         session.courses, session.duplicates = courses, duplicates
         session.finished = True
         session.status = f"이수 과목 {len(courses)}개를 읽었습니다. 아래 목록을 확인해 주세요."
+        self._log(session, f"과목 {len(courses)}개 읽음")
+        # 다 읽었으면 학교 세션(쿠키)을 담은 브라우저는 바로 닫는다. 읽은 과목은 연결을 끊을 때까지 둔다.
+        asyncio.ensure_future(self._release(session))
+
+    async def _release(self, session: KnuSession) -> None:
+        if session.nav_task is not None and session.nav_task is not asyncio.current_task():
+            session.nav_task.cancel()
+        context, session.context, session.page = session.context, None, None
+        try:
+            if context is not None:
+                await context.close()
+        except Exception:
+            pass
+
+    @staticmethod
+    def _log(session: KnuSession, step: str) -> None:
+        """자동 이동 단계별 걸린 시간 (단계 이름만, 입력값·학번·성적은 남기지 않는다)."""
+        base = session.login_at or session.created
+        logger.info("knu-import %s +%.1fs %s", session.token[:6], time.monotonic() - base, step)
+
+    def _on_request(self, session: KnuSession, request: Any) -> None:
+        """학교 조회 요청의 모양만 남긴다: 주소 경로, 헤더 이름, 본문 키 이름 (값은 남기지 않는다)."""
+        if session.closed or RESPONSE_MARKER not in request.url:
+            return
+        try:
+            body = request.post_data or ""
+            try:
+                parsed = json.loads(body)
+                keys = {k: sorted(v) if isinstance(v, dict) else type(v).__name__ for k, v in parsed.items()}
+            except Exception:
+                keys = sorted({k for k, _ in parse_qsl(body, keep_blank_values=True)})
+            logger.info(
+                "knu-import request shape: %s %s headers=%s body_keys=%s",
+                request.method, urlsplit(request.url).path, sorted(request.headers), keys,
+            )
+        except Exception:
+            pass
 
     def _pages(self, session: KnuSession) -> list[Any]:
         """열려 있는 모든 창. 지금 보여 주는 창을 먼저 살핀다."""
+        if session.context is None:
+            return []
         active = self._active_page(session)
         pages = [page for page in session.context.pages if not page.is_closed()]
         return ([active] if active in pages else []) + [page for page in pages if page is not active]
@@ -410,6 +459,7 @@ class KnuSessionManager:
         session.page = page  # 자동으로 누른 창을 보여 줘서 학생이 진행 상황을 볼 수 있게 한다
         session.status = status
         session.wait_until = time.monotonic() + wait
+        self._log(session, status)
         await element.click(timeout=1500)
 
     async def _navigate_step(self, session: KnuSession) -> bool:
@@ -422,6 +472,9 @@ class KnuSessionManager:
 
         # 비밀번호 칸이 보이면 아직 로그인 전이다. 로그인 화면의 메뉴를 미리 누르지 않는다.
         page, _ = await self._find(session, lambda frame: frame.locator("input[type=password]"))
+        if session.login_visible and page is None and not session.login_at:
+            session.login_at = now
+            self._log(session, "로그인 끝")
         session.login_visible = page is not None
         if page is not None:
             if not session.target_clicks:
@@ -494,10 +547,10 @@ class KnuSessionManager:
         if session.nav_task is None or session.nav_task.done():
             session.nav_task = asyncio.create_task(self._auto_navigate(session))
 
-    async def _frame(self, token: str, have: str | None = None) -> dict:
+    async def _frame(self, token: str, have: str | None = None, image: bool = True) -> dict:
         session = self._get(token)
         session.last_seen = time.monotonic()
-        page = self._active_page(session)
+        page = self._active_page(session) if image else None
         if page is not None and not session.frame_lock.locked():
             async with session.frame_lock:
                 try:
@@ -511,7 +564,7 @@ class KnuSessionManager:
         return {
             # 학생 화면에 이미 있는 것과 같으면 이미지를 다시 보내지 않는다.
             "image": base64.b64encode(session.last_frame).decode()
-            if session.last_frame and session.frame_id != have
+            if image and session.last_frame and session.frame_id != have
             else None,
             "frame_id": session.frame_id,
             "status": session.status,

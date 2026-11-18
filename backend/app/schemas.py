@@ -112,6 +112,7 @@ class KnuLogin(BaseModel):
 
 class KnuFrameRequest(BaseModel):
     have: str | None = Field(default=None, description="학생 화면에 이미 있는 화면의 frame_id")
+    image: bool = Field(default=True, description="false 면 화면을 캡처하지 않는다 (화면을 숨겼을 때, 자동 이동이 빨라진다)")
 
 
 class KnuFrame(BaseModel):

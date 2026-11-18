@@ -180,14 +180,14 @@ def test_full_flow_against_a_mock_school(school, caplog):
     assert frame["finished"], statuses
     assert time.time() - began < 10, statuses  # 고치기 전에는 약 14초
     assert any("학사행정" in status for _, status in statuses), statuses
-    assert school._sessions[token].query_clicks == 1  # 조회 버튼을 자동으로 한 번 눌렀다
-    assert len(school._sessions[token].context.pages) == 2  # 공지 팝업이 떠 있어도 진행했다
+    assert school._sessions[token].query_clicks == 1  # 조회 버튼을 자동으로 한 번 눌렀다 (공지 팝업이 떠 있어도)
+    time.sleep(0.5)
+    assert school._sessions[token].context is None  # 다 읽으면 학교 세션을 담은 브라우저를 바로 닫는다
     assert [(c["code"], c["credits"], c["category"]) for c in frame["courses"]] == [
         ("COMP0201", 3.0, "전공필수"),
         ("CLTR0001", 2.0, "교양"),
     ]
     assert frame["duplicates"] == ["COMP0201"]
-    assert base64.b64decode(frame["image"]).startswith(b"\xff\xd8")  # JPEG 화면
     # 성적은 내보내지 않는다 (화면 이미지 문자열은 우연히 같은 글자를 담을 수 있어 빼고 본다)
     exported = json.dumps({key: value for key, value in frame.items() if key != "image"}, ensure_ascii=False)
     assert "gradsGradCd" not in exported
@@ -199,8 +199,8 @@ def test_full_flow_against_a_mock_school(school, caplog):
     # 시작 응답은 학교 페이지가 다 열리기 전에 오므로, 로그인 칸이 보일 때까지 기다린다.
     # (첫 번째 학생의 쿠키가 보인다면 로그인 칸이 숨겨져 여기서 실패한다)
     call(school, other_page.wait_for_selector("#login", state="visible", timeout=10_000))
-    first_main = school._sessions[token].context.pages[0]
-    assert call(school, first_main.locator("#login").is_visible()) is False
+    other_frame = client.post("/import/knu/frame", headers={"X-Import-Session": other}).json()
+    assert base64.b64decode(other_frame["image"]).startswith(b"\xff\xd8")  # JPEG 화면
 
     # 원격 브라우저는 허용한 주소 밖에 머물지 못한다 (localhost 는 허용 목록에 없다).
     outside = other_page.url.replace("127.0.0.1", "localhost")
@@ -215,7 +215,7 @@ def test_full_flow_against_a_mock_school(school, caplog):
     assert any("되돌렸습니다" in item for item in seen), seen
 
     # 연결을 끊으면 브라우저와 결과가 사라진다.
-    contexts = [school._sessions[token].context, school._sessions[other].context]
+    contexts = [school._sessions[other].context]
     for item in (token, other):
         assert client.post("/import/knu/stop", headers={"X-Import-Session": item}).json()["closed"] is True
     assert school.session_count() == 0
