@@ -295,7 +295,7 @@ python -m playwright install chromium
 KNU_IMPORT_ENABLED=1
 ```
 
-프론트엔드(http://localhost:3000)에서는 **이수 과목 체크** 화면 맨 위의 '경북대 통합정보시스템에서 불러오기' 카드로 씁니다 (`frontend/app/components/knu-import.tsx`). 백엔드 주소는 `NEXT_PUBLIC_API_BASE`(기본 `http://localhost:8000`)이고, 기능이 꺼져 있으면 카드에 이유가 보입니다. 읽은 과목은 과목코드(없으면 띄어쓰기를 뺀 과목명)가 같은 과목으로 체크되고, 목록에 없는 과목은 따로 안내합니다.
+프론트엔드(http://localhost:3000)에서는 **이수 과목 체크** 화면 맨 위의 '경북대 통합정보시스템에서 불러오기' 카드로 씁니다 (`frontend/app/components/knu-import.tsx`). 백엔드 주소는 `NEXT_PUBLIC_API_BASE`(기본 `http://localhost:8000`)이고, 기능이 꺼져 있으면 카드에 이유가 보입니다. 학교 로그인 칸이 보이면 카드에 아이디·비밀번호 칸이 떠서, 입력하면 서버가 학교 로그인 칸을 채우고 제출합니다 (`POST /import/knu/login`, 값은 저장·기록하지 않음). 원격 화면을 누른 뒤에는 한글을 포함해 키보드로 바로 입력할 수 있습니다. 읽은 과목은 과목코드(없으면 띄어쓰기를 뺀 과목명)가 같은 과목으로 체크되고, 목록에 없는 과목은 따로 안내합니다.
 
 켜도 **서버를 실행한 컴퓨터에서 접속한 요청만** 받습니다. `http://localhost:8000`에서 이수 과목 항목 아래에 "경북대 학사시스템에서 불러오기"가 나타납니다.
 

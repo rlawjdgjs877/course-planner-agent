@@ -1,7 +1,7 @@
 "use client";
 // 경북대 통합정보시스템에서 이수 과목 불러오기 (실험 기능). 백엔드 /import/knu/* 를 쓴다.
 // 학생은 서버가 띄운 학교 화면에 직접 로그인하고, 서버는 과목코드·이름·학점·구분만 돌려준다.
-import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { courses } from "../lib/courses";
 import { Icon } from "./icons";
 
@@ -42,6 +42,10 @@ export function KnuImport({ onImport }: { onImport: (ids: string[]) => void }) {
   const [text, setText] = useState("");
   const [showText, setShowText] = useState(false);
   const [unmatched, setUnmatched] = useState<string[]>([]);
+  const [loginForm, setLoginForm] = useState(false);
+  const [userId, setUserId] = useState("");
+  const [password, setPassword] = useState("");
+  const captureRef = useRef<HTMLInputElement>(null);
   const tokenRef = useRef<string | null>(null);
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const wheel = useRef({ sum: 0, timer: 0 });
@@ -58,7 +62,7 @@ export function KnuImport({ onImport }: { onImport: (ids: string[]) => void }) {
           const f = await api("frame", { have }, token);
           if (!alive) break;
           if (f.image) { have = f.frame_id; setImage(`data:image/jpeg;base64,${f.image}`); }
-          setMessage(f.status);
+          setMessage(f.status); setLoginForm(!!f.login_form);
           if (f.finished) setResult({ courses: f.courses, duplicates: f.duplicates });
         } catch (e) {
           const err = e as Error & { status?: number };
@@ -78,7 +82,7 @@ export function KnuImport({ onImport }: { onImport: (ids: string[]) => void }) {
     return () => { window.removeEventListener("pagehide", close); close(); };
   }, []);
 
-  function end(msg: string) { tokenRef.current = null; setToken(null); setImage(null); setResult(null); setText(""); setMessage(msg); }
+  function end(msg: string) { tokenRef.current = null; setToken(null); setImage(null); setResult(null); setText(""); setPassword(""); setLoginForm(false); setMessage(msg); }
   async function start() {
     setMessage("학교 화면을 여는 중입니다. 몇 초 걸릴 수 있습니다."); setUnmatched([]);
     try { const { session } = await api("start", { consent }); tokenRef.current = session; setToken(session); }
@@ -97,15 +101,26 @@ export function KnuImport({ onImport }: { onImport: (ids: string[]) => void }) {
     onImport(ids); setUnmatched(unmatched);
     stop(`이수 과목 ${result.courses.length}개 중 ${result.courses.length - unmatched.length}개를 체크하고 연결을 종료했습니다.`);
   }
+  async function login(e: FormEvent) {
+    e.preventDefault();
+    const body = { user_id: userId, password };
+    setPassword(""); // 보낸 뒤 바로 지운다
+    try { await api("login", body, tokenRef.current); setMessage("로그인하는 중입니다. 로그인하면 이수성적 조회까지 자동으로 이동합니다."); }
+    catch (err) { setMessage((err as Error).message); }
+  }
+  // 숨은 입력칸에 쌓인 글자(영문·숫자, 조합이 끝난 한글)를 보낸다.
+  function flushCapture() {
+    const el = captureRef.current; if (!el || !el.value) return;
+    send({ type: "text", text: el.value.slice(0, 200) }); el.value = "";
+  }
   function click(e: MouseEvent<HTMLDivElement>) {
-    e.currentTarget.focus();
+    captureRef.current?.focus({ preventScroll: true });
     const box = e.currentTarget.getBoundingClientRect();
     send({ type: "click", x: clamp(Math.round((e.clientX - box.left) * 1280 / box.width), 0, 1280), y: clamp(Math.round((e.clientY - box.top) * 800 / box.height), 0, 800) });
   }
-  function key(e: KeyboardEvent<HTMLDivElement>) {
-    if (e.nativeEvent.isComposing || e.key === "Process" || e.ctrlKey || e.metaKey || e.altKey) return; // 한글·붙여넣기는 아래 칸으로
-    if (e.key.length === 1) { e.preventDefault(); send({ type: "text", text: e.key }); }
-    else if (KEYS.has(e.key)) { e.preventDefault(); send({ type: "key", key: e.key === "Tab" && e.shiftKey ? "Shift+Tab" : e.key }); }
+  function key(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.nativeEvent.isComposing || e.key === "Process" || e.ctrlKey || e.metaKey || e.altKey) return; // 글자는 onInput·onCompositionEnd 가 보낸다
+    if (KEYS.has(e.key)) { e.preventDefault(); flushCapture(); send({ type: "key", key: e.key === "Tab" && e.shiftKey ? "Shift+Tab" : e.key }); }
   }
   function sendText() { if (text) { send({ type: "text", text: text.slice(0, 200) }); setText(""); } }
 
@@ -135,11 +150,13 @@ export function KnuImport({ onImport }: { onImport: (ids: string[]) => void }) {
       <button type="button" className="primary-button" disabled={!consent} onClick={start}>학교 화면 열기<Icon name="arrow" size={15} /></button></div>}
       {token && <>
         <div className="knu-controls"><button type="button" onClick={() => api("navigate", {}, token).then(() => setMessage("자동 이동을 다시 시도합니다.")).catch(e => setMessage(e.message))}>자동 이동 다시 시도</button><button type="button" onClick={() => stop()}>연결 종료</button></div>
-        <div ref={screenRef} className="knu-screen" tabIndex={0} role="application" aria-label="원격 학교 화면. 누른 위치를 클릭하고, 선택한 상태에서 키보드 입력을 보냅니다." onClick={click} onKeyDown={key} onPaste={e => { const t = e.clipboardData.getData("text").slice(0, 200); if (t) { e.preventDefault(); send({ type: "text", text: t }); } }}>
+        {loginForm && <form className="knu-login" onSubmit={login}><input value={userId} onChange={e => setUserId(e.target.value)} maxLength={100} autoComplete="username" aria-label="학교 아이디" placeholder="학교 아이디" /><input type="password" value={password} onChange={e => setPassword(e.target.value)} maxLength={200} autoComplete="current-password" aria-label="비밀번호" placeholder="비밀번호" /><button type="submit" className="primary-button" disabled={!userId || !password}>로그인</button></form>}
+        <div ref={screenRef} className="knu-screen" onClick={click}>
           {image ? <img src={image} alt="" draggable={false} /> : <span>학교 화면을 불러오는 중입니다</span>}
+          <input ref={captureRef} className="knu-capture" aria-label="원격 학교 화면 키보드 입력. 화면을 누른 뒤 그대로 치면 학교 화면에 입력됩니다." autoComplete="off" onKeyDown={key} onInput={e => { if (!(e.nativeEvent as InputEvent).isComposing) flushCapture(); }} onCompositionEnd={flushCapture} onPaste={e => { const t = e.clipboardData.getData("text").slice(0, 200); e.preventDefault(); if (t) send({ type: "text", text: t }); }} />
         </div>
-        <div className="knu-typing"><input type={showText ? "text" : "password"} value={text} maxLength={200} autoComplete="off" aria-label="학교 화면에 입력할 글자" placeholder="한글이나 비밀번호는 여기에 적고 보내기" onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); sendText(); } }} /><button type="button" aria-pressed={showText} onClick={() => setShowText(v => !v)}>{showText ? "가리기" : "보이기"}</button><button type="button" onClick={sendText}>보내기</button></div>
-        <p className="link-entry-help">학교 화면의 입력칸을 먼저 누른 뒤, 화면을 선택한 채로 키보드로 치거나 위 칸에 적어 보내세요. 추가 인증이 나오면 화면을 직접 눌러 진행하면 됩니다.</p>
+        <p className="link-entry-help">학교 화면의 입력칸을 누르고 그대로 키보드로 치면 돼요(한글 포함). 추가 인증이 나오면 화면을 직접 눌러 진행하세요.</p>
+        <details className="knu-fallback"><summary>직접 입력(예비)</summary><div className="knu-typing"><input type={showText ? "text" : "password"} value={text} maxLength={200} autoComplete="off" aria-label="학교 화면에 입력할 글자" placeholder="입력이 잘 안 되면 여기에 적고 보내기" onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); sendText(); } }} /><button type="button" aria-pressed={showText} onClick={() => setShowText(v => !v)}>{showText ? "가리기" : "보이기"}</button><button type="button" onClick={sendText}>보내기</button></div></details>
       </>}
       {message && <p className="knu-status" aria-live="polite">{message}</p>}
       {result && <div className="knu-result"><strong>읽은 이수 과목 {result.courses.length}개</strong>

@@ -6,7 +6,7 @@ backend/app/data/courses.json 은 Course 의 목록이다.
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, SecretStr, model_validator
 
 
 class Meeting(BaseModel):
@@ -103,6 +103,13 @@ class KnuInput(BaseModel):
     delta: float | None = Field(default=None, ge=-2000, le=2000)
 
 
+class KnuLogin(BaseModel):
+    """학교 로그인 칸에 채울 값. 저장하거나 로그에 남기지 않는다."""
+
+    user_id: str = Field(min_length=1, max_length=100)
+    password: SecretStr = Field(min_length=1, max_length=200)
+
+
 class KnuFrameRequest(BaseModel):
     have: str | None = Field(default=None, description="학생 화면에 이미 있는 화면의 frame_id")
 
@@ -112,6 +119,7 @@ class KnuFrame(BaseModel):
     frame_id: str | None = Field(default=None, description="지금 화면의 식별자")
     status: str = Field(description="지금 무엇을 하고 있는지")
     finished: bool = Field(description="이수 과목을 읽었는지")
+    login_form: bool = Field(default=False, description="학교 로그인 칸이 화면에 보이는지")
     courses: list[ImportedCourse] = Field(default_factory=list)
     duplicates: list[str] = Field(default_factory=list, description="여러 번 나온 과목코드")
     expires_in: int = Field(description="이 연결이 자동으로 닫히기까지 남은 초")

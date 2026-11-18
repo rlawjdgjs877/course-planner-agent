@@ -37,6 +37,8 @@ VIEWPORT = {"width": 1280, "height": 800}
 TARGET_TEXT = re.compile(r"^\s*이수\s*성적\s*조회\s*$")  # 띄어쓰기가 달라도 찾는다
 PARENT_MENUS = ("학사행정", "수업/성적", "성적")
 QUERY_TEXT = re.compile(r"^\s*조회\s*$")
+LOGIN_TEXT = re.compile(r"^\s*로그인\s*$")
+LOGIN_ID_INPUTS ="input[type=text], input[type=email], input:not([type])"  # 아이디 칸 후보
 ALLOWED_KEYS = {
     "Enter", "Backspace", "Tab", "Shift+Tab", "Delete", "Escape", "Home", "End",
     "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "PageUp", "PageDown",
@@ -125,6 +127,7 @@ class KnuSession:
     status: str = "학교 화면을 여는 중입니다."
     finished: bool = False
     closed: bool = False
+    login_visible: bool = False  # 학교 로그인 칸(비밀번호 칸)이 보이는지
     courses: list[ImportedCourse] = field(default_factory=list)
     duplicates: list[str] = field(default_factory=list)
     visited_menus: dict[str, float] = field(default_factory=dict)  # 상위 메뉴를 마지막으로 누른 시각
@@ -228,6 +231,9 @@ class KnuSessionManager:
 
     async def retry_navigation(self, token: str) -> None:
         await self._worker.run(self._retry(token))
+
+    async def login(self, token: str, user_id: str, password: str, submit: bool = True) -> None:
+        await self._worker.run(self._login(token, user_id, password, submit))
 
     async def stop(self, token: str) -> bool:
         return await self._worker.run(self._stop(token))
@@ -416,6 +422,7 @@ class KnuSessionManager:
 
         # 비밀번호 칸이 보이면 아직 로그인 전이다. 로그인 화면의 메뉴를 미리 누르지 않는다.
         page, _ = await self._find(session, lambda frame: frame.locator("input[type=password]"))
+        session.login_visible = page is not None
         if page is not None:
             if not session.target_clicks:
                 self._info(session, "학교 화면에서 로그인해 주세요. 로그인하면 이수성적 조회까지 자동으로 이동합니다.")
@@ -509,6 +516,7 @@ class KnuSessionManager:
             "frame_id": session.frame_id,
             "status": session.status,
             "finished": session.finished,
+            "login_form": session.login_visible and not session.finished,
             "courses": session.courses,
             "duplicates": session.duplicates,
             "expires_in": max(0, int(expires)),
@@ -533,6 +541,45 @@ class KnuSessionManager:
                 await page.mouse.wheel(0, action.delta)
             else:
                 raise KnuImportError(400, "보낼 수 없는 입력입니다.")
+
+    async def _login(self, token: str, user_id: str, password: str, submit: bool) -> None:
+        """보이는 비밀번호 칸과 같은 프레임의 첫 글자 칸에 값을 채우고, 로그인 버튼(없으면 Enter)으로 제출한다.
+
+        값은 이 함수 안에서만 쓰고 세션에도 남기지 않는다.
+        """
+        session = self._get(token)
+        session.last_seen = time.monotonic()
+        async with session.input_lock:
+            for page in self._pages(session):
+                for frame in page.frames:
+                    try:
+                        pw = await self._first_visible(frame.locator("input[type=password]"))
+                        if pw is None:
+                            continue
+                        uid = await self._first_visible(frame.locator(LOGIN_ID_INPUTS))
+                        if uid is None:
+                            continue
+                        await uid.fill(user_id, timeout=2000)
+                        await pw.fill(password, timeout=2000)
+                        session.page = page
+                        if submit:
+                            session.status = "로그인하는 중입니다. 로그인하면 이수성적 조회까지 자동으로 이동합니다."
+                            button = await self._first_visible(frame.get_by_role("button", name=LOGIN_TEXT))
+                            if button is not None:
+                                await button.click(timeout=2000)
+                            else:
+                                await pw.press("Enter", timeout=2000)
+                        return
+                    except Exception:
+                        continue
+        raise KnuImportError(409, "학교 화면에서 로그인 칸을 찾지 못했습니다. 화면을 눌러 직접 입력해 주세요.")
+
+    @staticmethod
+    async def _first_visible(items: Any) -> Any:
+        for index in range(min(await items.count(), 10)):
+            if await items.nth(index).is_visible():
+                return items.nth(index)
+        return None
 
     async def _stop(self, token: str) -> bool:
         session = self._sessions.get(token) if token else None

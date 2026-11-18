@@ -13,6 +13,7 @@ from app.schemas import (
     KnuFrameRequest,
     KnuImportStatus,
     KnuInput,
+    KnuLogin,
     KnuStartRequest,
     KnuStartResponse,
     KnuStopRequest,
@@ -98,6 +99,14 @@ async def send_input(body: KnuInput, request: Request, x_import_session: str = H
     """원격 화면에 클릭, 키, 글자, 스크롤을 보낸다."""
     _check(request)
     await _call(knu_session.manager.send_input(x_import_session, body))
+    return {"ok": True}
+
+
+@router.post("/login")
+async def login(body: KnuLogin, request: Request, x_import_session: str = Header(default="")) -> dict:
+    """학교 화면의 로그인 칸을 채우고 제출한다. 값은 저장하거나 로그에 남기지 않는다."""
+    _check(request)
+    await _call(knu_session.manager.login(x_import_session, body.user_id, body.password.get_secret_value()))
     return {"ok": True}
 
 
