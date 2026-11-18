@@ -37,7 +37,7 @@ from app.services.knu_transcript import RESPONSE_MARKER, extract_courses
 DEFAULT_START_URL = "https://knuin.knu.ac.kr/webview/main/Main.knu"
 VIEWPORT = {"width": 1280, "height": 800}
 TARGET_TEXT = re.compile(r"^\s*(기?이수\s*성적|전체\s*성적|성적)\s*조회\s*$")  # 띄어쓰기가 달라도 찾는다
-PARENT_MENUS = ("학사행정", "수업/성적", "성적")
+PARENT_MENUS = ("학사행정", "수업/성적", "성적", "학기성적")  # 실제 학교: 학사행정 → 성적 → 학기성적 → 이수성적조회
 QUERY_TEXT = re.compile(r"^\s*조회\s*$")
 logger = logging.getLogger("app.knu_import")
 if not logger.handlers:  # uvicorn 은 앱 로그를 INFO 로 보여 주지 않아서 직접 붙인다
@@ -53,6 +53,7 @@ NAV_INTERVAL = 0.3  # 자동 이동이 화면을 확인하는 간격(초)
 NAV_PAUSE_AFTER_TYPING = 1.0  # 학생이 글자를 치는 중이면 이만큼 자동 이동을 쉰다 (클릭은 쉬지 않는다)
 TARGET_CLICK_LIMIT = 3  # 이수성적 조회를 이만큼 눌러도 응답이 없으면 자동 이동을 멈춘다
 QUERY_CLICK_LIMIT = 2
+HIDDEN_CLICK_LIMIT = 2  # 접힌 메뉴를 바로 여는 시도 횟수
 MENU_CLICK_LIMIT = 4  # 상위 메뉴를 이만큼 눌러도 이수성적 조회가 안 보이면 학생에게 화면을 넘긴다
 MENU_HINT = re.compile(r"성적|이수")  # 이수성적 조회 화면에서 '조회' 버튼을 누르는 최대 횟수
 WAIT_AFTER_MENU = 0.6  # 상위 메뉴를 누른 뒤 하위 메뉴가 그려지기를 기다리는 시간(초)
@@ -142,6 +143,7 @@ class KnuSession:
     visited_menus: dict[str, float] = field(default_factory=dict)  # 상위 메뉴를 마지막으로 누른 시각
     target_clicks: int = 0
     menu_clicks: int = 0
+    hidden_clicks: int = 0
     query_clicks: int = 0
     wait_until: float = 0.0  # 이 시각까지는 방금 누른 것의 결과를 기다린다
     notice_until: float = 0.0  # 이 시각까지는 중요한 안내를 진행 문구로 덮지 않는다
@@ -505,6 +507,19 @@ class KnuSessionManager:
             await self._click(session, page, target, "이수성적 조회 화면을 여는 중입니다.", WAIT_AFTER_TARGET)
             return False
 
+        # 메뉴가 접혀 있어도 DOM 에 있으면 상위 메뉴를 거치지 않고 바로 연다 (실제 학교는 학사행정 → 성적 → 학기성적 아래).
+        if session.hidden_clicks < HIDDEN_CLICK_LIMIT:
+            page, hidden = await self._find_any(session, lambda frame: frame.get_by_text(TARGET_TEXT))
+            if hidden is not None:
+                session.hidden_clicks += 1
+                session.target_clicks += 1
+                session.query_clicks = 0
+                session.page, session.status = page, "이수성적 조회 화면을 여는 중입니다."
+                session.wait_until = time.monotonic() + WAIT_AFTER_TARGET
+                self._log(session, "접힌 이수성적조회 메뉴를 바로 엶")
+                await hidden.dispatch_event("click", timeout=1500)
+                return False
+
         if session.menu_clicks >= MENU_CLICK_LIMIT:
             # 메뉴 이름이 예상과 다르다. 계속 돌지 말고 학생에게 화면을 넘긴다 (직접 눌러도 응답은 읽는다).
             await self._log_menu_labels(session)
@@ -528,6 +543,18 @@ class KnuSessionManager:
         if not session.target_clicks:
             self._info(session, "이수성적 조회 메뉴를 찾고 있습니다. 화면에 보이면 직접 눌러도 됩니다.")
         return False
+
+    async def _find_any(self, session: KnuSession, locate: Callable[[Any], Any]) -> tuple[Any, Any]:
+        """보이지 않아도 DOM 에 있는 첫 요소. (창, 요소) 또는 (None, None)."""
+        for page in self._pages(session):
+            for frame in page.frames:
+                try:
+                    items = locate(frame)
+                    if await items.count():
+                        return page, items.first
+                except Exception:
+                    continue
+        return None, None
 
     async def _log_menu_labels(self, session: KnuSession) -> None:
         """화면에 보이는 메뉴 이름 중 '성적'·'이수'가 들어간 것만 남긴다 (메뉴 이름이라 개인 정보가 아니다)."""
@@ -566,7 +593,7 @@ class KnuSessionManager:
         if session.finished:
             return
         session.visited_menus.clear()
-        session.target_clicks = session.query_clicks = session.menu_clicks = 0
+        session.target_clicks = session.query_clicks = session.menu_clicks = session.hidden_clicks = 0
         session.wait_until = 0.0
         session.status = "자동 이동을 다시 시도합니다."
         if session.nav_task is None or session.nav_task.done():

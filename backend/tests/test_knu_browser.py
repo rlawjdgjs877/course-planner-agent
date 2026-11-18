@@ -179,7 +179,8 @@ def test_full_flow_against_a_mock_school(school, caplog):
         time.sleep(0.5)
     assert frame["finished"], statuses
     assert time.time() - began < 10, statuses  # 고치기 전에는 약 14초
-    assert any("학사행정" in status for _, status in statuses), statuses
+    assert any("이수성적 조회 화면을 여는 중" in status for _, status in statuses), statuses
+    assert school._sessions[token].menu_clicks == 0  # 접힌 메뉴를 바로 열어서 상위 메뉴를 누르지 않았다
     assert school._sessions[token].query_clicks == 1  # 조회 버튼을 자동으로 한 번 눌렀다 (공지 팝업이 떠 있어도)
     time.sleep(0.5)
     assert school._sessions[token].context is None  # 다 읽으면 학교 세션을 담은 브라우저를 바로 닫는다
