@@ -28,9 +28,12 @@ with sync_playwright() as p:
   route.fulfill(status=200,headers=headers,body=json.dumps(data))
  context.route('**/import/knu/*',mock)
  page=context.new_page();page.goto(url,wait_until='networkidle')
+ page.get_by_text('수집 항목·이용 목적·보관 안내 보기',exact=True).click();expect(page.get_by_text('동의 거부',exact=True)).to_be_visible();page.get_by_text('수집 항목·이용 목적·보관 안내 보기',exact=True).click()
  school=page.get_by_role('button',name='학교 로그인으로 시작',exact=True);manual=page.get_by_role('button',name='직접 입력하기',exact=True)
  expect(school).to_be_disabled();expect(manual).to_be_enabled();left=school.bounding_box();right=manual.bounding_box();assert abs(left['y']-right['y'])<1 and abs(left['height']-right['height'])<1
- page.get_by_role('checkbox',name=re.compile('학교 화면·입력 내용이')).check();expect(school).to_be_enabled();school.click()
+ collection=page.get_by_role('checkbox',name=re.compile('이수 과목 정보의 수집·이용'));connection=page.get_by_role('checkbox',name=re.compile('학교 화면과 입력 내용의 연결 서버 처리'))
+ collection.check();expect(school).to_be_disabled();assert state['starts']==0
+ connection.check();expect(school).to_be_enabled();collection.uncheck();expect(school).to_be_disabled();collection.check();school.click()
  expect(page.get_by_role('dialog',name='경북대학교 학교 로그인',exact=True)).to_be_visible()
  expect(page.get_by_role('button',name='학교 로그인 화면 열기',exact=True)).to_have_count(0)
  expect(page.get_by_alt_text('학교 시스템 원격 화면')).to_be_visible();assert state['starts']==1
@@ -47,6 +50,7 @@ with sync_playwright() as p:
  page.wait_for_function("JSON.parse(localStorage.getItem('campus-finder-knu-documents-v2')).importedCourses.length === 2")
  stored=page.evaluate("JSON.parse(localStorage.getItem('campus-finder-knu-documents-v2'))")
  assert known['id'] in stored['selected'];assert len(stored['importedCourses'])==2
+ assert 'schoolConsent' not in stored
  assert 'should-not-be-stored' not in json.dumps(stored) and 'mock-private-session-not-for-storage' not in json.dumps(stored)
  assert all(set(course)=={'code','name','credits','category'} for course in stored['importedCourses'])
  assert state['stops']>=1
@@ -59,9 +63,9 @@ with sync_playwright() as p:
  with page.expect_response('**/import/knu/stop'):page.get_by_role('button',name='학교 로그인 창 닫기',exact=True).click()
  expect(page.get_by_role('dialog')).to_have_count(0);assert state['stops']>=2
  assert page.evaluate('document.body.style.overflow')!='hidden'
- state['available']=False;page.reload(wait_until='networkidle');page.get_by_role('checkbox',name=re.compile('학교 화면·입력 내용이')).check();page.get_by_role('button',name='학교 로그인으로 시작',exact=True).click()
+ state['available']=False;page.reload(wait_until='networkidle');page.get_by_role('checkbox',name=re.compile('이수 과목 정보의 수집·이용')).check();page.get_by_role('checkbox',name=re.compile('학교 화면과 입력 내용의 연결 서버 처리')).check();page.get_by_role('button',name='학교 로그인으로 시작',exact=True).click()
  expect(page.get_by_text('미사용 테스트 상태',exact=True)).to_be_visible();expect(page.get_by_role('button',name='학교 로그인 화면 열기',exact=True)).to_be_disabled()
  page.get_by_role('button',name='학교 로그인 창 닫기',exact=True).click();page.get_by_role('button',name='직접 입력하기',exact=True).click()
  expect(page.get_by_role('heading',name='나의 컴학 생활',exact=True)).to_be_visible()
  context.close();browser.close()
-print('PASS: aligned welcome actions, first-screen consent and automatic modal opening without a second click, mock remote input + immediate clearing, no token/credential persistence, exact-code application, historical course retention, removal sync, session cleanup on modal close and unavailable-service fallback. No real school account was used.')
+print('PASS: aligned welcome actions, both required privacy consents and refusal fallback, first-screen automatic modal opening without a second click, mock remote input + immediate clearing, no token/credential persistence, exact-code application, historical course retention, removal sync, session cleanup on modal close and unavailable-service fallback. No real school account was used.')

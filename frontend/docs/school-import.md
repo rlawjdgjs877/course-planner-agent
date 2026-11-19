@@ -45,7 +45,9 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 ## 세션과 저장
 
-- 첫 화면에서 안내와 본인 계정 사용에 동의한 뒤 버튼을 누릅니다.
+- 첫 화면의 개인정보 제공 동의 영역에서 수집·이용 및 학교 연결 서버 처리에 각각 동의한 뒤 버튼을 누릅니다.
+- 수집 항목, 이용 목적, 처리 경로, 보관·삭제, 동의 거부 안내를 펼쳐 볼 수 있습니다. 필수 항목 하나라도 미동의면 로그인 창이 열리지 않습니다.
+- 동의 선택은 현재 페이지 메모리에만 유지하며 브라우저 재방문 시 다시 확인합니다. 직접 입력은 해당 동의 없이 이용할 수 있습니다.
 - 버튼을 누르면 Plann 위에 학교 로그인 대화상자가 바로 열리고 연결을 자동 시작합니다. 추가로 화면 열기 버튼을 누를 필요가 없습니다.
 - 닫기·Escape는 연결을 정리합니다. 학교 원격 화면에 초점을 둔 상태의 Escape·Tab은 학교 화면으로 전달합니다.
 - 조회 결과를 확인해 반영하면 대화상자를 닫고 이수 내역 화면으로 이동합니다.
@@ -66,6 +68,8 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 - `app/lib/imported-courses.ts`: 저장 필드 정리, 중복 병합, 과목코드 매칭
 - `app/components/imported-course-summary.tsx`: 과거 과목을 포함한 이수 내역
 - `app/components/academic-input-choice.tsx`: 첫 화면 학교 로그인 버튼
+- `app/components/school-privacy-consent.tsx`: 개인정보 안내·필수 동의 UI
+- `app/lib/school-privacy.ts`: 필수 동의 충족 여부 검사
 
 ## 검증
 

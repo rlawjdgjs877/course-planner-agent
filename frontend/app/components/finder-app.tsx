@@ -12,6 +12,7 @@ import { CourseOfferings } from "./course-offerings";
 import { courseMatchesSource, courseMatchesYear, courseGradeLabel, courseSources } from "../lib/offerings";
 import { AcademicLinkEntry } from "./academic-link-entry";
 import { SchoolImportDialog } from "./school-import-dialog";
+import { emptySchoolPrivacyConsent, hasSchoolPrivacyConsent } from "../lib/school-privacy";
 import { ImportedCourseSummary } from "./imported-course-summary";
 import { normalizeImportedCourses, mergeImportedCourses, importedCatalogIds, type ImportedCourse } from "../lib/imported-courses";
 import { AcademicInputChoice, type AcademicInputMethod } from "./academic-input-choice";
@@ -24,7 +25,7 @@ export default function FinderApp() {
   const [section, setSection] = useState(0);
   const [showChoice, setShowChoice] = useState(true);
   const [schoolDialogOpen, setSchoolDialogOpen] = useState(false);
-  const [schoolConsent, setSchoolConsent] = useState(false);
+  const [schoolConsent, setSchoolConsent] = useState(emptySchoolPrivacyConsent);
   const closeSchoolDialog = useCallback(() => setSchoolDialogOpen(false), []);
   const [inputMethod, setInputMethod] = useState<AcademicInputMethod | null>(null);
   const [academicLink, setAcademicLink] = useState("");
@@ -87,7 +88,7 @@ export default function FinderApp() {
   const folders = [1, 2, 3, 4, 0];
   const navigate = (index: number) => { setSection(index); setQuery(""); setYear(null); window.scrollTo({ top: 0, behavior: "auto" }); };
   const startWith = (method: AcademicInputMethod) => { setInputMethod(method); navigate(0); setShowChoice(false); };
-  const openSchoolDialog = () => { if (schoolConsent) setSchoolDialogOpen(true); else { navigate(0); setShowChoice(true); } };
+  const openSchoolDialog = () => { if (hasSchoolPrivacyConsent(schoolConsent)) setSchoolDialogOpen(true); else { navigate(0); setShowChoice(true); } };
   return <div className={`desktop ${showChoice ? "is-welcome" : ""}`}>
     <header className="desktop-bar"><span className="desktop-brand"><Icon name="book" size={17} /> Plann</span><span className="desktop-menu">파일 <span>편집</span> <span>보기</span></span><span className="desktop-right">나의 대학 생활, 차곡차곡.</span></header>
 
