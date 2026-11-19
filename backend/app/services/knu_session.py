@@ -431,6 +431,8 @@ class KnuSessionManager:
     def _active_page(self, session: KnuSession) -> Any:
         if session.page is not None and not session.page.is_closed():
             return session.page
+        if session.context is None:  # 과목을 다 읽어 브라우저를 닫았다
+            return None
         pages = [page for page in session.context.pages if not page.is_closed()]
         session.page = pages[-1] if pages else None
         return session.page
@@ -488,9 +490,23 @@ class KnuSessionManager:
         session.finished = True
         session.mark(f"이수성적 응답 받음 ({len(courses)}개 과목)")
         session.status = f"이수 과목 {len(courses)}개를 읽었습니다. 아래 목록을 확인해 주세요."
+        # 다 읽었으면 학교 세션(쿠키)을 담은 브라우저는 바로 닫는다. 읽은 과목은 연결을 끊을 때까지 둔다.
+        asyncio.ensure_future(self._release(session))
+
+    async def _release(self, session: KnuSession) -> None:
+        if session.nav_task is not None and session.nav_task is not asyncio.current_task():
+            session.nav_task.cancel()
+        context, session.context, session.page = session.context, None, None
+        try:
+            if context is not None:
+                await context.close()
+        except Exception:
+            pass
 
     def _pages(self, session: KnuSession) -> list[Any]:
         """열려 있는 모든 창. 지금 보여 주는 창을 먼저 살핀다."""
+        if session.context is None:
+            return []
         active = self._active_page(session)
         pages = [page for page in session.context.pages if not page.is_closed()]
         return ([active] if active in pages else []) + [page for page in pages if page is not active]

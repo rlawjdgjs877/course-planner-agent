@@ -244,7 +244,7 @@ def test_each_student_gets_a_separate_session(fake):
     assert frame_a["finished"] is True
     assert [c["code"] for c in frame_a["courses"]] == ["COMP0201"]
     assert frame_b["finished"] is False and frame_b["courses"] == []
-    assert base64.b64decode(frame_a["image"]).startswith(b"\xff\xd8")
+    assert base64.b64decode(frame_b["image"]).startswith(b"\xff\xd8")  # A는 다 읽어서 브라우저를 닫았고 B는 계속 보인다
 
 
 def test_unknown_or_missing_token_is_rejected(fake):

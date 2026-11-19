@@ -132,6 +132,8 @@ def test_full_flow_against_a_mock_school(school, caplog):
     token = started.json()["session"]
     headers = {"X-Import-Session": token}
     send = lambda body: client.post("/import/knu/input", json=body, headers=headers)
+    first_context = school._sessions[token].context
+    main = first_context.pages[0]  # 다 읽으면 브라우저를 닫으므로 미리 잡아 둔다
 
     # 학생이 원격 화면에서 직접 로그인한다 (클릭과 글자 입력을 API 로 보낸다).
     secret = "pw-Secret-4821"
@@ -155,16 +157,22 @@ def test_full_flow_against_a_mock_school(school, caplog):
     assert frame["finished"], statuses
     assert time.time() - began < 10, statuses  # 고치기 전에는 약 14초
     assert set(school._sessions[token].visited_menus) == {"성적", "학기성적"}, statuses  # 화면 폴링이 문구를 놓칠 수 있어 기록으로 확인
-    main = school._sessions[token].context.pages[0]
-    assert call(school, main.evaluate("window.wrongMenu === true")) is False  # 학사행정은 누르지 않았다
-    assert school._sessions[token].query_clicks == 1  # 조회 버튼을 자동으로 한 번 눌렀다
-    assert len(school._sessions[token].context.pages) == 2  # 공지 팝업이 떠 있어도 진행했다
+    assert school._sessions[token].fallback_used is False  # 학사행정은 누르지 않았다
+    assert school._sessions[token].query_clicks == 1  # 조회 버튼을 자동으로 한 번 눌렀다 (공지 팝업이 떠 있어도)
+    # 다 읽으면 학교 세션(쿠키)을 담은 브라우저를 바로 닫는다. 읽은 과목은 남는다.
+    deadline = time.time() + 5
+    while (school._sessions[token].context is not None or first_context.pages) and time.time() < deadline:
+        time.sleep(0.1)
+    assert school._sessions[token].context is None
+    assert not first_context.pages and main.is_closed()
     assert [(c["code"], c["credits"], c["category"]) for c in frame["courses"]] == [
         ("COMP0201", 3.0, "전공필수"),
         ("CLTR0001", 2.0, "교양"),
     ]
     assert frame["duplicates"] == ["COMP0201"]
     assert base64.b64decode(frame["image"]).startswith(b"\xff\xd8")  # JPEG 화면
+    after = client.post("/import/knu/frame", headers=headers).json()
+    assert after["finished"] and [c["code"] for c in after["courses"]] == ["COMP0201", "CLTR0001"]
     # 성적은 내보내지 않는다 (화면 이미지 문자열은 우연히 같은 글자를 담을 수 있어 빼고 본다)
     exported = json.dumps({key: value for key, value in frame.items() if key != "image"}, ensure_ascii=False)
     assert "gradsGradCd" not in exported
@@ -176,8 +184,6 @@ def test_full_flow_against_a_mock_school(school, caplog):
     # 시작 응답은 학교 페이지가 다 열리기 전에 오므로, 로그인 칸이 보일 때까지 기다린다.
     # (첫 번째 학생의 쿠키가 보인다면 로그인 칸이 숨겨져 여기서 실패한다)
     call(school, other_page.wait_for_selector("#login", state="visible", timeout=10_000))
-    first_main = school._sessions[token].context.pages[0]
-    assert call(school, first_main.locator("#login").is_visible()) is False
 
     # 원격 브라우저는 허용한 주소 밖에 머물지 못한다 (localhost 는 허용 목록에 없다).
     outside = other_page.url.replace("127.0.0.1", "localhost")
@@ -192,7 +198,7 @@ def test_full_flow_against_a_mock_school(school, caplog):
     assert any("되돌렸습니다" in item for item in seen), seen
 
     # 연결을 끊으면 브라우저와 결과가 사라진다.
-    contexts = [school._sessions[token].context, school._sessions[other].context]
+    contexts = [school._sessions[other].context]
     for item in (token, other):
         assert client.post("/import/knu/stop", headers={"X-Import-Session": item}).json()["closed"] is True
     assert school.session_count() == 0
