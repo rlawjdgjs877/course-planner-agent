@@ -122,6 +122,38 @@ def center(manager, token, selector):
     return {"x": box["x"] + box["width"] / 2, "y": box["y"] + box["height"] / 2}
 
 
+def test_login_shortcut_fills_school_login_and_finishes(school, caplog):
+    caplog.set_level(logging.DEBUG)
+    client = TestClient(app, client=("127.0.0.1", 50002))
+    started = client.post("/import/knu/start", json={"consent": True})
+    if started.status_code == 503:
+        pytest.skip(started.json()["detail"])
+    headers = {"X-Import-Session": started.json()["session"]}
+
+    # 로그인 칸이 보이면 frame 이 알려 준다. 화면 캡처는 받지 않는다.
+    deadline = time.time() + 15
+    while time.time() < deadline and not client.post("/import/knu/frame", json={"image": False}, headers=headers).json()["login_form"]:
+        time.sleep(0.3)
+    secret = "pw-Secret-7310"
+    response = client.post("/import/knu/login", json={"user_id": "student", "password": secret}, headers=headers)
+    assert response.status_code == 200, response.text
+
+    frame, deadline = {}, time.time() + 30
+    while time.time() < deadline:
+        frame = client.post("/import/knu/frame", json={"image": False}, headers=headers).json()
+        if frame["finished"]:
+            break
+        time.sleep(0.3)
+    assert frame["finished"] and frame["login_form"] is False
+    assert frame["image"] is None
+    assert [c["code"] for c in frame["courses"]] == ["COMP0201", "CLTR0001"]
+    # 로그인 칸이 없으면 409 로 알려 주고, 비밀번호는 응답과 로그 어디에도 없다.
+    again = client.post("/import/knu/login", json={"user_id": "student", "password": secret}, headers=headers)
+    assert again.status_code == 409 and secret not in again.text
+    client.post("/import/knu/stop", headers=headers)
+    assert secret not in caplog.text
+
+
 def test_full_flow_against_a_mock_school(school, caplog):
     caplog.set_level(logging.DEBUG)
     client = TestClient(app, client=("127.0.0.1", 50001))

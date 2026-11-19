@@ -52,6 +52,8 @@ MENU_PATH = ("성적", "학기성적")
 FALLBACK_MENU = "학사행정"  # '성적'을 여러 번 눌러도 안 펼쳐지면 이 메뉴를 한 번 열어 본다
 FALLBACK_AFTER = 3  # '성적'을 이만큼 시도해도 진척이 없으면 FALLBACK_MENU 를 누른다
 QUERY_TEXT = re.compile(r"^\s*조회\s*$")
+LOGIN_TEXT = re.compile(r"^\s*로그인\s*$")
+LOGIN_ID_INPUTS = "input[type=text], input[type=email], input:not([type])"  # 아이디 칸 후보
 ALLOWED_KEYS = {
     "Enter", "Backspace", "Tab", "Shift+Tab", "Delete", "Escape", "Home", "End",
     "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "PageUp", "PageDown",
@@ -326,8 +328,11 @@ class KnuSessionManager:
     async def start(self) -> str:
         return await self._worker.run(self._start(settings()))
 
-    async def frame(self, token: str, have: str | None = None) -> dict:
-        return await self._worker.run(self._frame(token, have))
+    async def frame(self, token: str, have: str | None = None, image: bool = True) -> dict:
+        return await self._worker.run(self._frame(token, have, image))
+
+    async def login(self, token: str, user_id: str, password: str) -> None:
+        await self._worker.run(self._login(token, user_id, password))
 
     async def send_input(self, token: str, action: KnuInput) -> str | None:
         return await self._worker.run(self._send_input(token, action))
@@ -794,10 +799,10 @@ class KnuSessionManager:
         if session.nav_task is None or session.nav_task.done():
             session.nav_task = asyncio.create_task(self._auto_navigate(session))
 
-    async def _frame(self, token: str, have: str | None = None) -> dict:
+    async def _frame(self, token: str, have: str | None = None, image: bool = True) -> dict:
         session = self._get(token)
         session.last_seen = time.monotonic()
-        page = self._active_page(session)
+        page = self._active_page(session) if image else None  # 화면을 안 보여 줄 때는 캡처하지 않는다
         fresh = time.monotonic() - session.last_capture < MIN_FRAME_INTERVAL
         if page is not None and not fresh and not session.frame_lock.locked():
             async with session.frame_lock:
@@ -815,7 +820,7 @@ class KnuSessionManager:
         return {
             # 학생 화면에 이미 있는 것과 같으면 이미지를 다시 보내지 않는다.
             "image": base64.b64encode(session.last_frame).decode()
-            if session.last_frame and session.frame_id != have
+            if image and session.last_frame and session.frame_id != have
             else None,
             "frame_id": session.frame_id,
             "status": session.status,
@@ -823,6 +828,7 @@ class KnuSessionManager:
             "courses": session.courses,
             "duplicates": session.duplicates,
             "expires_in": max(0, int(expires)),
+            "login_form": session.password_visible and not session.finished,
             # 로그인을 마치면 학생 화면에서는 학교 화면을 가리고 진행 상황만 보여 준다.
             "logged_in": session.login_done and not session.password_visible,
             "needs_help": session.login_done
@@ -862,6 +868,45 @@ class KnuSessionManager:
         except Exception:
             return None  # 화면이 바쁘면 지금 모양을 그대로 둔다
         return cursor if cursor in CURSORS else "default"
+
+    async def _login(self, token: str, user_id: str, password: str) -> None:
+        """보이는 비밀번호 칸과 같은 프레임의 첫 글자 칸에 값을 채우고, 로그인 버튼(없으면 Enter)으로 제출한다.
+
+        값은 이 함수 안에서만 쓰고 세션에도 남기지 않는다.
+        """
+        session = self._get(token)
+        session.last_seen = time.monotonic()
+        async with session.input_lock:
+            for page in self._pages(session):
+                for frame in page.frames:
+                    try:
+                        pw = await self._first_visible(frame.locator("input[type=password]"))
+                        if pw is None:
+                            continue
+                        uid = await self._first_visible(frame.locator(LOGIN_ID_INPUTS))
+                        if uid is None:
+                            continue
+                        await uid.fill(user_id, timeout=2000)
+                        await pw.fill(password, timeout=2000)
+                        session.page = page
+                        session.status = "로그인하는 중입니다. 로그인하면 이수성적 조회까지 자동으로 이동합니다."
+                        button = await self._first_visible(frame.get_by_role("button", name=LOGIN_TEXT))
+                        if button is not None:
+                            await button.click(timeout=2000)
+                        else:
+                            await pw.press("Enter", timeout=2000)
+                        session.mark("아이디·비밀번호 칸을 채워 로그인 제출")
+                        return
+                    except Exception:
+                        continue
+        raise KnuImportError(409, "학교 화면에서 로그인 칸을 찾지 못했습니다. 잠시 뒤 다시 시도해 주세요.")
+
+    @staticmethod
+    async def _first_visible(items: Any) -> Any:
+        for index in range(min(await items.count(), 10)):
+            if await items.nth(index).is_visible():
+                return items.nth(index)
+        return None
 
     async def _stop(self, token: str) -> bool:
         session = self._sessions.get(token) if token else None
