@@ -1,4 +1,4 @@
-﻿# Plann 학교 이수 과목 불러오기
+# Plann 학교 이수 과목 불러오기
 
 ## 실제로 지원하는 정보
 
@@ -45,7 +45,10 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 ## 세션과 저장
 
-- 시작 전 사용자가 안내와 본인 계정 사용에 동의해야 합니다.
+- 첫 화면에서 안내와 본인 계정 사용에 동의한 뒤 버튼을 누릅니다.
+- 버튼을 누르면 Plann 위에 학교 로그인 대화상자가 바로 열리고 연결을 자동 시작합니다. 추가로 화면 열기 버튼을 누를 필요가 없습니다.
+- 닫기·Escape는 연결을 정리합니다. 학교 원격 화면에 초점을 둔 상태의 Escape·Tab은 학교 화면으로 전달합니다.
+- 조회 결과를 확인해 반영하면 대화상자를 닫고 이수 내역 화면으로 이동합니다.
 - 연결 토큰은 React ref 메모리에만 보관하고 URL·localStorage·sessionStorage에 넣지 않습니다.
 - 학교 화면은 표시용 메모리에만 두며, 조회 완료·연결 종료·화면 이동 시 지웁니다.
 - 화면 이동·페이지 종료 시 `/stop`을 요청합니다. 네트워크 실패 시 서버의 만료 처리가 최종 정리합니다.
@@ -58,7 +61,8 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ## 수정할 파일
 
 - `app/lib/knu-import.ts`: API 주소·요청·응답·세션 종료
-- `app/components/school-import-panel.tsx`: 원격 화면, 입력 전달, 동의, 결과 확인
+- `app/components/school-import-panel.tsx`: 원격 화면, 자동 연결, 입력 전달, 결과 확인
+- `app/components/school-import-dialog.tsx`: Plann 안의 로그인 창과 닫기·초점 이동
 - `app/lib/imported-courses.ts`: 저장 필드 정리, 중복 병합, 과목코드 매칭
 - `app/components/imported-course-summary.tsx`: 과거 과목을 포함한 이수 내역
 - `app/components/academic-input-choice.tsx`: 첫 화면 학교 로그인 버튼
