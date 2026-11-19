@@ -95,10 +95,10 @@ async def frame(
 
 @router.post("/input")
 async def send_input(body: KnuInput, request: Request, x_import_session: str = Header(default="")) -> dict:
-    """원격 화면에 클릭, 키, 글자, 스크롤을 보낸다."""
+    """원격 화면에 클릭, 키, 글자, 스크롤, 마우스 이동을 보낸다. 이동이면 그 자리의 마우스 모양을 돌려준다."""
     _check(request)
-    await _call(knu_session.manager.send_input(x_import_session, body))
-    return {"ok": True}
+    cursor = await _call(knu_session.manager.send_input(x_import_session, body))
+    return {"ok": True, "cursor": cursor}
 
 
 @router.post("/navigate")

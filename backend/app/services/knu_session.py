@@ -18,6 +18,8 @@ import asyncio
 import base64
 import hashlib
 import importlib.util
+import itertools
+import logging
 import os
 import re
 import secrets
@@ -32,24 +34,98 @@ from urllib.parse import urlsplit
 from app.schemas import ImportedCourse, KnuInput
 from app.services.knu_transcript import RESPONSE_MARKER, extract_courses
 
+# 단계별 걸린 시간을 서버 콘솔에 남긴다. 토큰, 입력한 글자, 주소의 경로·쿼리, 과목 내용은 남기지 않는다.
+log = logging.getLogger("knu_import")
+if not log.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(asctime)s [knu_import] %(message)s", "%H:%M:%S"))
+    log.addHandler(_handler)
+    log.setLevel(logging.INFO)
+    log.propagate = False
+_log_ids = itertools.count(1)
+
 DEFAULT_START_URL = "https://knuin.knu.ac.kr/webview/main/Main.knu"
 VIEWPORT = {"width": 1280, "height": 800}
 TARGET_TEXT = re.compile(r"^\s*이수\s*성적\s*조회\s*$")  # 띄어쓰기가 달라도 찾는다
-PARENT_MENUS = ("학사행정", "수업/성적", "성적")
+# 통합정보시스템 왼쪽 아래 메뉴: 성적 → 학기성적 → 이수성적조회. 이 순서로만 누른다.
+MENU_PATH = ("성적", "학기성적")
+FALLBACK_MENU = "학사행정"  # '성적'을 여러 번 눌러도 안 펼쳐지면 이 메뉴를 한 번 열어 본다
+FALLBACK_AFTER = 3  # '성적'을 이만큼 시도해도 진척이 없으면 FALLBACK_MENU 를 누른다
 QUERY_TEXT = re.compile(r"^\s*조회\s*$")
 ALLOWED_KEYS = {
     "Enter", "Backspace", "Tab", "Shift+Tab", "Delete", "Escape", "Home", "End",
     "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "PageUp", "PageDown",
 }
-NAV_INTERVAL = 0.3  # 자동 이동이 화면을 확인하는 간격(초)
+NAV_INTERVAL = 0.1  # 자동 이동이 화면을 확인하는 간격(초)
 NAV_PAUSE_AFTER_TYPING = 1.0  # 학생이 글자를 치는 중이면 이만큼 자동 이동을 쉰다 (클릭은 쉬지 않는다)
 TARGET_CLICK_LIMIT = 3  # 이수성적 조회를 이만큼 눌러도 응답이 없으면 자동 이동을 멈춘다
 QUERY_CLICK_LIMIT = 2  # 이수성적 조회 화면에서 '조회' 버튼을 누르는 최대 횟수
-WAIT_AFTER_MENU = 0.6  # 상위 메뉴를 누른 뒤 하위 메뉴가 그려지기를 기다리는 시간(초)
+WAIT_AFTER_MENU = 0.3  # 상위 메뉴를 누른 뒤 하위 메뉴가 그려지기를 기다리는 시간(초)
 WAIT_AFTER_TARGET = 1.5  # 이수성적 조회를 연 뒤 학교가 스스로 목록을 보내는지 기다리는 시간(초)
 WAIT_AFTER_QUERY = 3.0  # 조회 버튼을 누른 뒤 응답을 기다리는 시간(초)
-PARENT_RETRY = 15.0  # 상위 메뉴를 누르고 이만큼 지나도 못 찾으면 다시 눌러 본다
-SETTLE_AFTER_NAVIGATION = 1.0  # 화면이 바뀐 뒤 다 그려지기를 기다리는 시간(초)
+PARENT_RETRY = 5.0  # 메뉴를 눌렀는데 이만큼 지나도 다음 메뉴가 안 보이면 (다른 후보를) 다시 눌러 본다
+SLOW_FIND_SECONDS = 1.0  # 한 단계에서 요소 찾기가 이보다 오래 걸리면 로그에 남긴다
+SCAN_TIMEOUT = 1.0  # 프레임 하나를 한 번에 확인하는 데 기다리는 최대 시간(초)
+FULL_SEARCH_EVERY = 5  # 한 번에 확인한 결과를 믿지 않고 모든 프레임을 직접 살피는 주기(단계 수). 놓치는 경우 대비
+IDLE_NAV_INTERVAL = 0.5  # 누를 것이 안 보일 때(로딩 중, 로그인 대기) 확인 간격. 학교 화면이 그려질 여유를 준다
+MIN_FRAME_INTERVAL = 0.25  # 원격 화면 캡처 최소 간격(초). 그 사이 요청에는 직전 화면을 다시 쓴다
+DIAG_SECONDS = 60.0  # 로그인 뒤 이 시간 동안 1초마다 화면 상태를 로그에 남긴다
+# 프레임 안에서 찾을 것들이 보이는지 한 번에 확인하는 스크립트. 글자는 앞뒤 공백을 빼고 정확히 같아야 한다.
+SCAN_SCRIPT = """(texts) => {
+  // 화면 전체 요소를 훑지 않고, 브라우저 기본 기능(XPath)으로 그 글자를 가진 글자 조각만 바로 찾는다.
+  const visible = (el) => {
+    if (!el || !el.getClientRects().length) return false;
+    const style = getComputedStyle(el);
+    return style.visibility !== 'hidden' && style.display !== 'none';
+  };
+  const literal = (s) => s.includes("'") ? 'concat(' + s.split("'").map((p) => "'" + p + "'").join(", \\"'\\", ") + ')' : "'" + s + "'";
+  const any = (xpath) => {
+    const found = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+    for (let i = 0; i < found.snapshotLength; i++) if (visible(found.snapshotItem(i).parentElement)) return true;
+    return false;
+  };
+  const result = {
+    ready: document.readyState,
+    chars: document.body ? document.body.textContent.length : 0,
+    password: [...document.querySelectorAll('input[type=password]')].some(visible),
+    modal: [...document.querySelectorAll('.w2modal_popup')].some(visible),
+    target: any("//text()[translate(normalize-space(.), ' ', '') = '이수성적조회']"),
+    query: any("//text()[normalize-space(.) = '조회']") || [...document.querySelectorAll('input[type=button],input[type=submit]')].some((el) => el.value.trim() === '조회' && visible(el)),
+  };
+  for (const t of texts) result['text:' + t] = any('//text()[normalize-space(.) = ' + literal(t) + ']');
+  return result;
+}"""
+# 마우스가 있는 자리의 요소를 보고 학생 화면에 보여 줄 마우스 모양을 정한다.
+# 학교 화면의 투명한 팝업 막(w2modal_popup)은 건너뛰고, 같은 사이트의 iframe 안까지 따라 들어간다.
+CURSOR_SCRIPT = """(p) => {
+  let doc = document, x = p.x, y = p.y;
+  for (let depth = 0; depth < 5; depth++) {
+    const el = doc.elementsFromPoint(x, y).find((e) => !e.classList.contains('w2modal_popup'));
+    if (!el) return 'default';
+    if (el.tagName === 'IFRAME' || el.tagName === 'FRAME') {
+      try {
+        const box = el.getBoundingClientRect();
+        if (!el.contentDocument) return 'default';
+        doc = el.contentDocument; x -= box.left; y -= box.top;
+        continue;
+      } catch (e) { return 'default'; }
+    }
+    const cursor = getComputedStyle(el).cursor;
+    if (cursor && cursor !== 'auto' && cursor !== 'default') return cursor;  // 버튼은 기본값이 default 라 아래에서 다시 본다
+    if (el.closest('a[href], button, [onclick], [role=button], [role=link], [role=menuitem], [role=tab], label[for], select, summary')) return 'pointer';
+    if (el.matches('textarea, [contenteditable=""], [contenteditable=true], input:not([type]), input[type=text], input[type=password], input[type=search], input[type=email], input[type=number], input[type=tel], input[type=url]')) return 'text';
+    return 'default';
+  }
+  return 'default';
+}"""
+CURSORS = {
+    "default", "pointer", "text", "wait", "progress", "help", "move", "not-allowed", "grab", "grabbing",
+    "col-resize", "row-resize", "ew-resize", "ns-resize", "crosshair", "copy", "vertical-text",
+}
+CURSOR_TIMEOUT = 0.5  # 마우스 모양을 확인하는 데 기다리는 최대 시간(초). 넘으면 모양을 바꾸지 않는다
+HELP_AFTER_LOGIN = 45.0  # 로그인 뒤 이만큼 지나도 목록을 못 읽으면 학생에게 화면을 다시 보여 준다
+RETRY_AFTER_FAILED_CLICK = 1.0  # 메뉴 클릭 자체가 실패했으면 이만큼 뒤에 다시 누른다
+SETTLE_AFTER_NAVIGATION = 0.3  # 화면이 바뀐 뒤 다 그려지기를 기다리는 시간(초)
 NOTICE_SECONDS = 4.0  # 중요한 안내를 보여 주는 최소 시간
 BROWSER_KEEP_SECONDS = 600  # 마지막 연결이 끝나도 Chrome 을 이만큼 켜 두어 다음 시작을 빠르게 한다
 REAP_INTERVAL = 15.0
@@ -64,8 +140,11 @@ class KnuImportError(Exception):
         self.message = message
 
 
-def _flag(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+def _flag(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name, "").strip().lower()
+    if not value:
+        return default
+    return value in {"1", "true", "yes", "on"}
 
 
 def _int(name: str, default: int) -> int:
@@ -94,7 +173,8 @@ def settings() -> Settings:
     allowed = {host.strip().lower() for host in hosts.split(",") if host.strip()}
     allowed.add((urlsplit(start_url).hostname or "").lower())
     return Settings(
-        enabled=_flag("KNU_IMPORT_ENABLED"),
+        # 기본으로 켜져 있다. 공개 배포 등에서 끄려면 KNU_IMPORT_ENABLED=0
+        enabled=_flag("KNU_IMPORT_ENABLED", default=True),
         allow_remote=_flag("KNU_IMPORT_ALLOW_REMOTE"),
         start_url=start_url,
         allowed_hosts=tuple(sorted(host for host in allowed if host)),
@@ -138,6 +218,32 @@ class KnuSession:
     frame_id: str | None = None
     frame_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     input_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    log_id: int = field(default_factory=lambda: next(_log_ids))  # 로그에서 연결을 구분하는 번호 (토큰 대신)
+    last_log: float = field(default_factory=time.monotonic)
+    login_seen: bool = False  # 로그인 칸을 본 적이 있는지
+    login_done: bool = False  # 로그인 칸이 사라진 것을 확인했는지
+    password_visible: bool = False  # 지금 화면에 로그인 칸이 보이는지 (다시 로그인해야 하면 화면을 보여 준다)
+    menu_attempts: dict[str, int] = field(default_factory=dict)  # 메뉴별로 눌러 본 횟수 (후보를 돌아가며 고른다)
+    fallback_used: bool = False  # 예비 메뉴(학사행정)를 이미 눌렀는지
+    # 학교 화면(WebSquare)에는 투명한 팝업 막(w2modal_popup)이 늘 떠 있어 일반 클릭은 1.5초 기다린 뒤 실패한다.
+    # 그래서 처음부터 클릭 이벤트를 직접 보낸다. 직접 보내기가 실패하면 일반 클릭을 한 번 시도한다.
+    direct_click: bool = True
+    pending: dict = field(default_factory=dict)  # 아직 끝나지 않은 요청 → 시작 시각 (진단용)
+    find_seconds: float = 0.0  # 이번 단계에서 요소를 찾는 데 쓴 시간 (느리면 로그에 남긴다)
+    scan: dict | None = None  # 이번 단계에서 프레임별로 한 번에 확인한 결과
+    scan_ms: float = 0.0  # 마지막 한 번에 확인하기에 걸린 시간
+    scan_timeouts: int = 0  # 마지막 확인에서 시간 안에 답하지 못한 프레임 수
+    steps: int = 0  # 자동 이동 단계 수
+    idle: bool = False  # 지난 단계에서 누를 것이 없었는지 (확인 간격을 늘린다)
+    login_at: float = 0.0  # 로그인 칸이 사라진 시각
+    last_diag: float = 0.0  # 마지막으로 상태 로그를 남긴 시각
+    last_capture: float = 0.0  # 마지막으로 화면을 캡처한 시각
+
+    def mark(self, event: str) -> None:
+        """단계 하나가 끝났음을 로그에 남긴다. 연결 시작부터와 직전 단계부터의 시간을 함께 적는다."""
+        now = time.monotonic()
+        log.info("#%d +%.2fs (시작부터 %.2fs) %s", self.log_id, now - self.last_log, now - self.created, event)
+        self.last_log = now
 
 
 BrowserFactory = Callable[[Settings], Awaitable[tuple[Callable[[], Awaitable[None]] | None, Any]]]
@@ -223,8 +329,8 @@ class KnuSessionManager:
     async def frame(self, token: str, have: str | None = None) -> dict:
         return await self._worker.run(self._frame(token, have))
 
-    async def send_input(self, token: str, action: KnuInput) -> None:
-        await self._worker.run(self._send_input(token, action))
+    async def send_input(self, token: str, action: KnuInput) -> str | None:
+        return await self._worker.run(self._send_input(token, action))
 
     async def retry_navigation(self, token: str) -> None:
         await self._worker.run(self._retry(token))
@@ -268,6 +374,9 @@ class KnuSessionManager:
         self._sessions[session.token] = session
 
         context.on("response", lambda response: self._on_response(session, response))
+        context.on("request", lambda request: session.pending.__setitem__(request, time.monotonic()))
+        context.on("requestfinished", lambda request: session.pending.pop(request, None))
+        context.on("requestfailed", lambda request: session.pending.pop(request, None))
         context.on("page", lambda page: self._on_page(session, cfg, page))
         try:
             page = await context.new_page()
@@ -276,6 +385,7 @@ class KnuSessionManager:
             await self._close(session)
             raise KnuImportError(502, "브라우저 화면을 준비하지 못했습니다. 다시 시도해 주세요.") from error
         session.page = page
+        session.mark("원격 브라우저 준비됨")
 
         # 학교 페이지가 다 열릴 때까지 기다리지 않고 바로 돌려준다. 여는 동안의 화면도 보여 준다.
         session.nav_task = asyncio.create_task(self._open_school(session, cfg))
@@ -308,6 +418,7 @@ class KnuSessionManager:
             if not session.closed:
                 session.status = "학교 화면을 열지 못했습니다. 인터넷 연결을 확인하고, 연결을 종료한 뒤 다시 시도해 주세요."
             return
+        session.mark("학교 첫 화면 열림 (domcontentloaded)")
         session.status = "학교 화면에서 직접 로그인해 주세요. 로그인하면 이수성적 조회까지 자동으로 이동합니다."
         await self._auto_navigate(session)
 
@@ -349,6 +460,7 @@ class KnuSessionManager:
         if session.closed or frame != page.main_frame:
             return
         session.last_navigation = time.monotonic()
+        session.mark(f"화면 이동: {urlsplit(frame.url).hostname or '(빈 화면)'}")
         if not self._blocked(session, cfg, frame.url):
             return
         asyncio.ensure_future(self._leave(session, page))
@@ -374,6 +486,7 @@ class KnuSessionManager:
             return
         session.courses, session.duplicates = courses, duplicates
         session.finished = True
+        session.mark(f"이수성적 응답 받음 ({len(courses)}개 과목)")
         session.status = f"이수 과목 {len(courses)}개를 읽었습니다. 아래 목록을 확인해 주세요."
 
     def _pages(self, session: KnuSession) -> list[Any]:
@@ -382,32 +495,166 @@ class KnuSessionManager:
         pages = [page for page in session.context.pages if not page.is_closed()]
         return ([active] if active in pages else []) + [page for page in pages if page is not active]
 
-    async def _find(self, session: KnuSession, locate: Callable[[Any], Any]) -> tuple[Any, Any]:
+    async def _scan(self, session: KnuSession) -> None:
+        """모든 프레임에서 찾을 것들이 보이는지 한 번에 확인해 session.scan 에 둔다.
+
+        요소마다 브라우저에 따로 묻는 대신 프레임마다 스크립트를 한 번만 돌린다. 학교 화면이 무거울 때
+        수십 번 주고받던 것을 프레임 수만큼으로 줄인다. 결과는 '이 프레임은 살펴볼 필요가 없다'를
+        정하는 데만 쓰고, 실제로 누를 요소는 지금처럼 Playwright 로 찾는다.
+        """
+        began = time.monotonic()
+        frames = [frame for page in self._pages(session) for frame in page.frames]
+        texts = [label for label in (*MENU_PATH, FALLBACK_MENU)]
+
+        timeouts = 0
+
+        async def one(frame: Any) -> tuple[Any, dict | None]:
+            nonlocal timeouts
+            try:
+                return frame, await asyncio.wait_for(frame.evaluate(SCAN_SCRIPT, texts), SCAN_TIMEOUT)
+            except asyncio.TimeoutError:
+                timeouts += 1
+                return frame, None
+            except Exception:
+                return frame, None  # 확인하지 못한 프레임은 예전처럼 직접 살핀다
+
+        session.scan = dict(await asyncio.gather(*(one(frame) for frame in frames)))
+        session.scan_ms = (time.monotonic() - began) * 1000
+        session.scan_timeouts = timeouts
+        session.find_seconds += time.monotonic() - began
+        if any(result and result.get("modal") for result in session.scan.values()) and not session.direct_click:
+            # 학교의 투명한 팝업 막이 떠 있다. 일반 클릭은 1.5초 기다린 뒤 실패하므로 처음부터 직접 보낸다.
+            session.direct_click = True
+            session.mark("팝업 막(w2modal_popup) 확인: 클릭 이벤트를 직접 보냅니다")
+        self._diagnose(session)
+        session.steps += 1
+        if session.steps % FULL_SEARCH_EVERY == 0:
+            session.scan = None  # 가끔은 결과를 믿지 않고 모든 프레임을 직접 살핀다 (글자가 쪼개져 놓친 경우 대비)
+
+    @staticmethod
+    def _diagnose(session: KnuSession) -> None:
+        """로그인 뒤 1분 동안, 1초마다 화면 상태를 한 줄 남긴다. 어디서 시간이 가는지 확인하려는 것."""
+        now = time.monotonic()
+        if not session.login_at or now - session.login_at > DIAG_SECONDS or now - session.last_diag < 1.0:
+            return
+        session.last_diag = now
+        results = [r for r in (session.scan or {}).values() if r]
+        seen = sorted({
+            key.removeprefix("text:") for r in results for key, value in r.items()
+            if value is True and key not in ("ready", "chars")
+        })
+        pages = ", ".join(f"{r.get('ready')}/{r.get('chars', 0)}자" for r in results) or "확인 못 함"
+        pending = ""
+        if session.pending:
+            request, began = min(session.pending.items(), key=lambda item: item[1])
+            parts = urlsplit(getattr(request, "url", ""))
+            pending = f", 남은 요청 {len(session.pending)}개 (가장 오래된 것 {now - began:.1f}s: {parts.hostname}{parts.path[:60]})"
+        session.mark(
+            f"상태: 프레임 {len(session.scan or {})}개, 확인 {session.scan_ms:.0f}ms"
+            f"{f' (시간 초과 {session.scan_timeouts}개)' if session.scan_timeouts else ''}, 화면 {pages}"
+            f"{pending or ', 남은 요청 없음'}, 보이는 것: {', '.join(seen) or '없음'}"
+        )
+
+    @staticmethod
+    def _worth_looking(session: KnuSession, frame: Any, key: str | None) -> bool:
+        if key is None or session.scan is None:
+            return True
+        result = session.scan.get(frame)
+        return result is None or bool(result.get(key))
+
+    async def _find(self, session: KnuSession, locate: Callable[[Any], Any], key: str | None = None) -> tuple[Any, Any]:
         """모든 창의 모든 프레임에서 처음 보이는 요소를 찾는다. (창, 요소) 또는 (None, None)."""
+        found = await self._find_all(session, locate, limit=1, key=key)
+        return found[0] if found else (None, None)
+
+    async def _find_all(
+        self, session: KnuSession, locate: Callable[[Any], Any], limit: int = 10, key: str | None = None
+    ) -> list[tuple[Any, Any]]:
+        """모든 창·프레임에서 보이는 요소를 최대 limit 개 찾는다. [(창, 요소), ...]
+
+        key 를 주면 한 번에 확인한 결과(session.scan)에서 그것이 없다고 나온 프레임은 건너뛴다.
+        """
+        began = time.monotonic()
+        try:
+            return await self._collect(session, locate, limit, key)
+        finally:
+            session.find_seconds += time.monotonic() - began
+
+    async def _collect(self, session: KnuSession, locate: Callable[[Any], Any], limit: int, key: str | None) -> list[tuple[Any, Any]]:
+        found: list[tuple[Any, Any]] = []
         for page in self._pages(session):
             for frame in page.frames:
+                if not self._worth_looking(session, frame, key):
+                    continue
                 try:
                     items = locate(frame)
-                    for index in range(min(await items.count(), 10)):
+                    for index in range(min(await items.count(), limit)):
                         candidate = items.nth(index)
                         if await candidate.is_visible():
-                            return page, candidate
+                            found.append((page, candidate))
+                            if len(found) >= limit:
+                                return found
                 except Exception:
                     continue
-        return None, None
+        return found
+
+    @staticmethod
+    def _reason(error: Exception) -> str:
+        """Playwright 오류에서 원인 한 줄을 뽑는다 (예: 다른 요소가 클릭을 가로챔). 로그용, 200자까지."""
+        lines = [line.strip(" -") for line in str(error).splitlines() if line.strip(" -")]
+        if not lines:
+            return type(error).__name__
+        keywords = ("intercepts pointer events", "not stable", "not visible", "outside of the viewport", "not enabled", "detached")
+        detail = next((line for line in reversed(lines) if any(k in line for k in keywords)), lines[-1])
+        return f"{type(error).__name__}: {detail}"[:200]
 
     @staticmethod
     def _query_button(frame: Any) -> Any:
         return frame.get_by_role("button", name=QUERY_TEXT).or_(frame.get_by_text(QUERY_TEXT))
 
     async def _click(self, session: KnuSession, page: Any, element: Any, status: str, wait: float) -> None:
+        if session.finished or session.closed:
+            return  # 요소를 찾는 사이 목록을 받았다. 더 누르지 않는다
         session.page = page  # 자동으로 누른 창을 보여 줘서 학생이 진행 상황을 볼 수 있게 한다
         session.status = status
         session.wait_until = time.monotonic() + wait
-        await element.click(timeout=1500)
+        if session.direct_click:
+            try:
+                await element.dispatch_event("click", timeout=1500)
+                session.mark(f"클릭 이벤트를 직접 보냄: {status}")
+                return
+            except Exception as error:
+                session.mark(f"클릭 이벤트 실패 ({self._reason(error)}), 일반 클릭 시도: {status}")
+            try:
+                await element.click(timeout=1500)
+            except Exception as error:
+                session.wait_until = 0.0  # 누르지 못했으니 결과를 기다릴 필요가 없다
+                session.mark(f"일반 클릭도 실패 ({self._reason(error)}): {status}")
+                raise
+            session.mark(f"자동 클릭: {status}")
+            return
+        try:
+            await element.click(timeout=1500)
+            session.mark(f"자동 클릭: {status}")
+            return
+        except Exception as error:
+            reason = self._reason(error)
+            session.mark(f"자동 클릭 실패 ({reason}): {status}")
+            if "intercepts pointer events" in reason:
+                session.direct_click = True
+        # 다른 요소에 가려졌거나 움직이는 중이면, 그 요소에 클릭 이벤트를 직접 보낸다 (메뉴 동작은 같다).
+        try:
+            await element.dispatch_event("click", timeout=1500)
+        except Exception as error:
+            session.wait_until = 0.0  # 누르지 못했으니 결과를 기다릴 필요가 없다
+            session.mark(f"클릭 이벤트도 실패 ({self._reason(error)}): {status}")
+            raise
+        session.mark(f"클릭 이벤트를 직접 보냄: {status}")
 
     async def _navigate_step(self, session: KnuSession) -> bool:
         """메뉴를 한 단계 누른다. 자동 이동을 그만둬야 하면 True."""
+        if session.finished or session.closed:
+            return True  # 이미 목록을 받았으면 더 누르지 않는다
         now = time.monotonic()
         if now < session.wait_until:
             return False  # 방금 누른 것의 결과를 기다린다
@@ -415,21 +662,33 @@ class KnuSessionManager:
             return False  # 화면이 막 바뀌어 아직 그리는 중일 수 있다 (로그인 칸이 늦게 나타나는 경우)
 
         # 비밀번호 칸이 보이면 아직 로그인 전이다. 로그인 화면의 메뉴를 미리 누르지 않는다.
-        page, _ = await self._find(session, lambda frame: frame.locator("input[type=password]"))
+        await self._scan(session)
+        session.idle = False
+        page, _ = await self._find(session, lambda frame: frame.locator("input[type=password]"), key="password")
+        session.password_visible = page is not None
         if page is not None:
+            session.idle = True  # 학생이 로그인하는 중이다
+            if not session.login_seen:
+                session.login_seen = True
+                session.mark("로그인 칸 보임")
             if not session.target_clicks:
                 self._info(session, "학교 화면에서 로그인해 주세요. 로그인하면 이수성적 조회까지 자동으로 이동합니다.")
             return False
 
+        if session.login_seen and not session.login_done:
+            session.login_done = True
+            session.login_at = time.monotonic()
+            session.mark("로그인 칸 사라짐 (로그인 완료로 판단)")
+
         # 이수성적 조회 화면을 열었는데 응답이 없으면 '조회' 버튼을 누른다.
         if session.target_clicks and session.query_clicks < QUERY_CLICK_LIMIT:
-            page, button = await self._find(session, self._query_button)
+            page, button = await self._find(session, self._query_button, key="query")
             if button is not None:
                 session.query_clicks += 1
                 await self._click(session, page, button, "조회 버튼을 눌러 이수 과목을 불러오는 중입니다.", WAIT_AFTER_QUERY)
                 return False
 
-        page, target = await self._find(session, lambda frame: frame.get_by_text(TARGET_TEXT))
+        page, target = await self._find(session, lambda frame: frame.get_by_text(TARGET_TEXT), key="target")
         if target is not None:
             if session.target_clicks >= TARGET_CLICK_LIMIT:
                 session.status = (
@@ -442,18 +701,43 @@ class KnuSessionManager:
             await self._click(session, page, target, "이수성적 조회 화면을 여는 중입니다.", WAIT_AFTER_TARGET)
             return False
 
-        for label in PARENT_MENUS:
+        # 경로의 가장 깊은 단계부터 찾는다. '학기성적'이 보이면 '성적'을 다시 누르지 않는다 (메뉴가 접힐 수 있다).
+        for label in reversed(MENU_PATH):
+            found = await self._find_all(
+                session, lambda frame, label=label: frame.get_by_text(label, exact=True), key=f"text:{label}"
+            )
+            if not found:
+                continue
             if now - session.visited_menus.get(label, float("-inf")) < PARENT_RETRY:
-                continue
-            page, menu = await self._find(session, lambda frame, label=label: frame.get_by_text(label, exact=True))
-            if menu is None:
-                continue
+                return False  # 방금 누른 메뉴다. 다음 메뉴가 펼쳐지기를 기다린다
+            attempt = session.menu_attempts.get(label, 0)
+            if label == MENU_PATH[0] and attempt >= FALLBACK_AFTER and not session.fallback_used:
+                # '성적'이 여러 번 안 펼쳐졌다. 예비로 학사행정을 한 번 열고, 곧 '성적'을 다시 누른다.
+                session.fallback_used = True
+                page, menu = await self._find(
+                    session, lambda frame: frame.get_by_text(FALLBACK_MENU, exact=True), key=f"text:{FALLBACK_MENU}"
+                )
+                if menu is not None:
+                    session.visited_menus[label] = now - PARENT_RETRY + RETRY_AFTER_FAILED_CLICK
+                    try:
+                        await self._click(session, page, menu, f"'{FALLBACK_MENU}' 메뉴를 먼저 열어 봅니다.", WAIT_AFTER_MENU)
+                    except Exception:
+                        pass
+                    return False
+            # 같은 글자가 여러 개면 시도할 때마다 다음 후보를 누른다 (첫 번째가 다른 곳의 '성적'일 수 있다).
+            session.menu_attempts[label] = attempt + 1
+            page, menu = found[attempt % len(found)]
             session.visited_menus[label] = now
-            await self._click(session, page, menu, f"'{label}' 메뉴에서 이수성적 조회를 찾고 있습니다.", WAIT_AFTER_MENU)
+            try:
+                await self._click(session, page, menu, f"'{label}' 메뉴에서 이수성적 조회를 찾고 있습니다.", WAIT_AFTER_MENU)
+            except Exception:
+                # 화면이 덜 그려져 누르지 못했으면 15초를 기다리지 않고 곧 다시 누른다.
+                session.visited_menus[label] = now - PARENT_RETRY + RETRY_AFTER_FAILED_CLICK
             return False
 
         if not session.target_clicks:
             self._info(session, "이수성적 조회 메뉴를 찾고 있습니다. 화면에 보이면 직접 눌러도 됩니다.")
+        session.idle = True  # 누를 것이 없다 (화면이 아직 그려지는 중일 수 있다)
         return False
 
     @staticmethod
@@ -466,14 +750,19 @@ class KnuSessionManager:
         # 메뉴가 보이지 않는 동안(로그인, 추가 인증 중)에는 기다리기만 한다.
         # 오래 걸려도 연결은 미사용 시간과 최대 사용 시간으로 정리된다.
         while not session.closed and not session.finished:
-            await asyncio.sleep(NAV_INTERVAL)
+            await asyncio.sleep(IDLE_NAV_INTERVAL if session.idle else NAV_INTERVAL)
+            if session.closed or session.finished:
+                return  # 기다리는 사이 목록을 받았다
             if time.monotonic() - session.last_typing < NAV_PAUSE_AFTER_TYPING:
                 continue  # 학생이 글자를 치는 중에는 화면을 건드리지 않는다
+            session.find_seconds = 0.0
             try:
                 if await self._navigate_step(session):
                     return
             except Exception:
                 session.status = "자동 이동을 시도하고 있습니다. 메뉴가 보이지 않으면 화면에서 직접 선택해 주세요."
+            if session.find_seconds > SLOW_FIND_SECONDS:
+                session.mark(f"화면에서 메뉴를 찾는 데 {session.find_seconds:.2f}s 걸림")
 
     async def _retry(self, token: str) -> None:
         session = self._get(token)
@@ -481,6 +770,8 @@ class KnuSessionManager:
         if session.finished:
             return
         session.visited_menus.clear()
+        session.menu_attempts.clear()
+        session.fallback_used = False
         session.target_clicks = session.query_clicks = 0
         session.wait_until = 0.0
         session.status = "자동 이동을 다시 시도합니다."
@@ -491,10 +782,14 @@ class KnuSessionManager:
         session = self._get(token)
         session.last_seen = time.monotonic()
         page = self._active_page(session)
-        if page is not None and not session.frame_lock.locked():
+        fresh = time.monotonic() - session.last_capture < MIN_FRAME_INTERVAL
+        if page is not None and not fresh and not session.frame_lock.locked():
             async with session.frame_lock:
                 try:
-                    session.last_frame = await page.screenshot(type="jpeg", quality=55, timeout=5000)
+                    session.last_capture = time.monotonic()
+                    session.last_frame = await page.screenshot(
+                        type="jpeg", quality=55, timeout=5000, caret="initial"  # 입력칸의 깜빡이는 커서도 보여 준다
+                    )
                     session.frame_id = hashlib.blake2b(session.last_frame, digest_size=8).hexdigest()
                 except Exception:
                     pass  # 이번 캡처를 건너뛰고 직전 화면을 보여 준다
@@ -512,9 +807,15 @@ class KnuSessionManager:
             "courses": session.courses,
             "duplicates": session.duplicates,
             "expires_in": max(0, int(expires)),
+            # 로그인을 마치면 학생 화면에서는 학교 화면을 가리고 진행 상황만 보여 준다.
+            "logged_in": session.login_done and not session.password_visible,
+            "needs_help": session.login_done
+            and not session.finished
+            and now - session.login_at > HELP_AFTER_LOGIN,
         }
 
-    async def _send_input(self, token: str, action: KnuInput) -> None:
+    async def _send_input(self, token: str, action: KnuInput) -> str | None:
+        """입력을 보낸다. 마우스 이동이면 그 자리의 마우스 모양(예: pointer, text)을 돌려준다."""
         session = self._get(token)
         session.last_seen = time.monotonic()
         if action.type in ("text", "key"):
@@ -531,8 +832,20 @@ class KnuSessionManager:
                 await page.keyboard.insert_text(action.text)
             elif action.type == "scroll" and action.delta is not None:
                 await page.mouse.wheel(0, action.delta)
+            elif action.type == "move" and action.x is not None and action.y is not None:
+                await page.mouse.move(action.x, action.y)  # 학교 화면의 메뉴 강조 같은 효과도 보이게 된다
+                return await self._cursor_at(page, action.x, action.y)
             else:
                 raise KnuImportError(400, "보낼 수 없는 입력입니다.")
+        return None
+
+    @staticmethod
+    async def _cursor_at(page: Any, x: float, y: float) -> str | None:
+        try:
+            cursor = await asyncio.wait_for(page.evaluate(CURSOR_SCRIPT, {"x": x, "y": y}), CURSOR_TIMEOUT)
+        except Exception:
+            return None  # 화면이 바쁘면 지금 모양을 그대로 둔다
+        return cursor if cursor in CURSORS else "default"
 
     async def _stop(self, token: str) -> bool:
         session = self._sessions.get(token) if token else None

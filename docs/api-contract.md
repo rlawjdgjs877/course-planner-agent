@@ -3,8 +3,8 @@
 프론트엔드(Plann, `frontend/`)가 백엔드(`backend/`)를 부를 때의 요청과 응답 모양입니다.
 바꿀 때는 이 문서를 먼저 고치고, 상대가 확인한 뒤 합칩니다.
 
-- 백엔드 주소: 개발 중에는 `http://localhost:8000`. 프론트엔드는 `NEXT_PUBLIC_API_BASE` 같은 환경변수로 두는 것을 권합니다.
-- 프론트엔드 개발 서버(`http://localhost:3000`)에서 오는 요청은 CORS로 허용되어 있습니다.
+- 백엔드 주소: 개발 중에는 `http://localhost:8000`. 프론트엔드는 `frontend/app/lib/api.ts`에서 `NEXT_PUBLIC_API_BASE`(없으면 `http://localhost:8000`)로 부릅니다. 바꾸려면 `frontend/.env.local`에 `NEXT_PUBLIC_API_BASE=...`를 적고 개발 서버를 다시 켜세요.
+- 프론트엔드 개발 서버(`http://localhost:3000`)에서 오는 요청은 CORS로 허용되어 있습니다. 다른 주소(예: 3000번이 사용 중이라 3001번으로 뜬 경우)는 백엔드 환경변수 `FRONTEND_ORIGINS=http://localhost:3001`(쉼표로 여러 개)로 허용합니다.
 - 모든 응답은 JSON입니다. 서버를 켜고 http://localhost:8000/docs 를 열면 아래 API를 직접 눌러 볼 수 있습니다.
 - 오류는 `{"detail": "사람이 읽을 이유"}` 모양이고, 요청 형식이 틀리면 422입니다.
 
@@ -138,7 +138,7 @@ python -m scripts.import_data offerings ../frontend/data/course-sources
 
 지금은 OpenAI로 조건을 고치는 시연용입니다. 팀 문서대로 Claude 도구 호출로 바꾸면서 요청·응답도 v3.2 후보(`tt_` id) 기준으로 바꿀 예정이라, 프론트엔드는 아직 붙이지 않는 것을 권합니다.
 
-## 5. 이수 과목 불러오기: `/import/knu/*` (실험 기능, 기본 꺼짐)
+## 5. 이수 과목 불러오기: `/import/knu/*` (실험 기능, 기본 켜짐)
 
 서버가 띄운 브라우저로 학교 화면을 조작하는 실험 기능입니다. 사용법과 주의 사항은 루트 README의 "경북대 이수 과목 불러오기"를 보세요. 프론트엔드에 붙이려면 다음을 알아야 합니다.
 

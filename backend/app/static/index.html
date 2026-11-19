@@ -219,9 +219,14 @@
   .knu-status { color: var(--muted); margin-top: 10px; min-height: 1.5em; }
   .screen { position: relative; margin-top: 10px; background: #1f2633; border-radius: 4px; overflow: hidden; aspect-ratio: 1280 / 800; }
   .screen img { display: block; width: 100%; height: 100%; }
-  .screen .capture { position: absolute; inset: 0; cursor: crosshair; }
-  .screen .capture:focus-visible { outline: 3px solid #2b5fd9; outline-offset: -3px; }
+  .screen .capture { position: absolute; inset: 0; cursor: default; outline: none; }
   .screen .placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: #c8cfdb; }
+  .knu-progress { display: flex; align-items: center; gap: 12px; margin-top: 10px; padding: 18px 16px;
+                  border: 1px solid #e3e6eb; border-radius: 4px; background: #f7f8fa; }
+  .knu-progress .spin { width: 20px; height: 20px; border: 3px solid #d5dae3; border-top-color: #2b5fd9;
+                        border-radius: 50%; animation: knu-spin 0.9s linear infinite; flex: none; }
+  @keyframes knu-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .knu-progress .spin { animation-duration: 3s; } }
   .typing { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
   .typing input { flex: 1; min-width: 180px; }
   .knu-result { margin-top: 16px; }
@@ -290,10 +295,15 @@
               </div>
               <div class="knu-controls">
                 <button type="button" class="primary" id="knu-start" disabled>학교 화면 열기</button>
+                <button type="button" class="small-button" id="knu-view" hidden aria-pressed="false">학교 화면 보기</button>
                 <button type="button" class="small-button" id="knu-retry" hidden>자동 이동 다시 시도</button>
                 <button type="button" class="small-button" id="knu-stop" hidden>연결 종료</button>
               </div>
               <p class="knu-status" id="knu-status" aria-live="polite"></p>
+              <div class="knu-progress" id="knu-progress" hidden>
+                <span class="spin" aria-hidden="true"></span>
+                <span>로그인을 확인했습니다. 이수 과목을 불러오는 중입니다. 학교 화면이 느리면 30초쯤 걸릴 수 있습니다.</span>
+              </div>
               <div class="screen" id="knu-screen" hidden>
                 <div class="placeholder" id="knu-placeholder">학교 화면을 불러오는 중입니다</div>
                 <img id="knu-frame" alt="" hidden>
@@ -462,7 +472,7 @@ const state = {
   chat: [],
   view: 'conditions', panel: 0,
   history: [],  // 이수 과목 {code, name, credits, category}
-  knu: { token: null, running: false, result: null, resultKey: '', lastPoll: 0, errorUntil: 0, frameId: null, queue: Promise.resolve(), wheel: 0, wheelTimer: null },
+  knu: { token: null, running: false, result: null, resultKey: '', lastPoll: 0, errorUntil: 0, frameId: null, queue: Promise.resolve(), wheel: 0, wheelTimer: null, showScreen: false, lastFrame: null },
 };
 const $ = (id) => document.getElementById(id);
 
@@ -1166,10 +1176,26 @@ async function knuApi(path, body = {}, token = state.knu.token) {
 
 const knuStatus = (text) => { $('knu-status').textContent = text; };
 
+// 로그인을 마치면 학교 화면이 저절로 움직이는 모습을 가리고 진행 표시만 보여 준다.
+// 자동 이동이 오래 걸리거나 다시 로그인해야 하면, 또는 학생이 '학교 화면 보기'를 누르면 화면을 보여 준다.
+function knuLayout(frame) {
+  const loggedIn = Boolean(frame && frame.logged_in);
+  const covered = loggedIn && !frame.needs_help && !state.knu.showScreen;
+  for (const id of ['knu-screen', 'knu-typing', 'knu-help']) $(id).hidden = covered;
+  $('knu-progress').hidden = !covered || Boolean(frame.finished);
+  $('knu-view').hidden = !loggedIn || frame.needs_help;
+  $('knu-view').textContent = state.knu.showScreen ? '학교 화면 숨기기' : '학교 화면 보기';
+  $('knu-view').setAttribute('aria-pressed', String(state.knu.showScreen));
+}
+
 function knuShowRunning(running) {
   $('knu-start').hidden = running;
   $('knu-consent').disabled = running;
   for (const id of ['knu-retry', 'knu-stop', 'knu-screen', 'knu-typing', 'knu-help']) $(id).hidden = !running;
+  state.knu.showScreen = false;
+  state.knu.lastFrame = null;
+  $('knu-view').hidden = true;
+  $('knu-progress').hidden = true;
   if (!running) {
     $('knu-frame').removeAttribute('src');  // 학교 화면을 남기지 않는다
     $('knu-frame').hidden = true;
@@ -1209,6 +1235,8 @@ async function knuLoop() {
           $('knu-frame').hidden = false;
           $('knu-placeholder').hidden = true;
         }
+        state.knu.lastFrame = frame;
+        knuLayout(frame);
         if (Date.now() > state.knu.errorUntil) knuStatus(frame.status);  // 입력 오류는 잠시 보여 준다
         if (frame.finished) knuShowResult(frame);
       } catch (error) {
@@ -1272,6 +1300,38 @@ function knuSetup() {
     knuApi('navigate').then(() => knuStatus('자동 이동을 다시 시도합니다.')).catch((error) => knuStatus(error.message));
   });
   $('knu-apply').addEventListener('click', knuApply);
+  $('knu-view').addEventListener('click', () => {
+    state.knu.showScreen = !state.knu.showScreen;
+    knuLayout(state.knu.lastFrame);
+  });
+
+  // 마우스를 움직이면 원격 화면에도 옮기고, 그 자리의 마우스 모양(손가락, I자 등)을 받아 똑같이 보여 준다.
+  // 요청은 한 번에 하나만 보내고, 기다리는 동안 움직인 것은 마지막 위치만 보낸다.
+  const move = { busy: false, next: null, last: 0 };
+  const sendMove = () => {
+    if (move.busy || !move.next || !state.knu.running) return;
+    const point = move.next;
+    move.next = null;
+    move.busy = true;
+    move.last = Date.now();
+    knuApi('input', { type: 'move', ...point })
+      .then((data) => { if (data.cursor) capture.style.cursor = data.cursor; })
+      .catch(() => { /* 마우스 모양은 못 바꿔도 괜찮다 */ })
+      .finally(() => {
+        move.busy = false;
+        if (move.next) setTimeout(sendMove, Math.max(0, 80 - (Date.now() - move.last)));
+      });
+  };
+  capture.addEventListener('mousemove', (event) => {
+    const box = capture.getBoundingClientRect();
+    move.next = {
+      x: clamp(Math.round((event.clientX - box.left) * 1280 / box.width), 0, 1280),
+      y: clamp(Math.round((event.clientY - box.top) * 800 / box.height), 0, 800),
+    };
+    if (!move.busy && Date.now() - move.last >= 80) sendMove();
+    else if (!move.busy) setTimeout(sendMove, 80 - (Date.now() - move.last));
+  });
+  capture.addEventListener('mouseleave', () => { move.next = null; capture.style.cursor = ''; });
 
   capture.addEventListener('click', (event) => {
     capture.focus();
