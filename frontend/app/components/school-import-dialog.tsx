@@ -23,6 +23,6 @@ export function SchoolImportDialog({ onClose, onApply }: { onClose: () => void; 
     document.addEventListener("keydown", keys);
     return () => { document.body.style.overflow = overflow; document.removeEventListener("keydown", keys); previousFocus?.focus(); };
   }, [onClose]);
-  return <div className="school-dialog-backdrop"><div ref={dialog} className="school-import-dialog" role="dialog" aria-modal="true" aria-labelledby="school-dialog-title"><header className="school-dialog-header"><div><strong id="school-dialog-title">경북대학교 학교 로그인</strong><span>Plann 안에서 학교 화면에 직접 로그인해 주세요.</span></div><button ref={close} type="button" onClick={onClose} aria-label="학교 로그인 창 닫기">닫기 ×</button></header><SchoolImportPanel autoStart onApply={onApply} /></div></div>;
+  return <div className="school-dialog-backdrop"><div ref={dialog} className="school-import-dialog" role="dialog" aria-modal="true" aria-labelledby="school-dialog-title"><header className="school-dialog-header"><div><strong id="school-dialog-title">경북대학교 학교 로그인</strong><span>통합정보시스템 아이디·비밀번호로 로그인하면 이수 과목을 자동으로 읽어 와요.</span></div><button ref={close} type="button" onClick={onClose} aria-label="학교 로그인 창 닫기">닫기 ×</button></header><SchoolImportPanel autoStart onApply={onApply} /></div></div>;
 }
 
