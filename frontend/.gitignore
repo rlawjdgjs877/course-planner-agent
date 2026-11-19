@@ -43,3 +43,6 @@ next-env.d.ts
 # local working files
 /tmp/
 
+
+# Safe, blank configuration template
+!.env.example

@@ -1,0 +1,11 @@
+﻿import assert from 'node:assert/strict';
+import { normalizeImportedCourses, mergeImportedCourses, importedCatalogIds } from '../app/lib/imported-courses.ts';
+const incoming=normalizeImportedCourses([{code:'comp0204',name:'자료구조',credits:3,category:'전공',password:'never-save',grade:'A+',session:'not-stored'},{code:'COMP0204',name:'중복',credits:6},{code:'TEST9999',name:'과거 교양',credits:null},{code:'bad-code-001',name:'잘못된 코드',credits:2}]);
+assert.equal(incoming.length,2);assert.equal(incoming[0].code,'COMP0204');assert.equal(incoming[0].credits,3);
+assert.deepEqual(Object.keys(incoming[0]).sort(),['category','code','credits','name']);
+assert.equal(JSON.stringify(incoming).includes('never-save'),false);
+assert.deepEqual(importedCatalogIds(incoming,[{id:'knu-1',code:'COMP0204'},{id:'knu-2',code:'OTHER0001'}]),['knu-1']);
+assert.equal(mergeImportedCourses(incoming,[{code:'COMP0204',name:'자료구조',credits:2,category:null}])[0].credits,2);
+assert.equal(normalizeImportedCourses([{code:'TEST9999',name:'알수없는학점',credits:Infinity}])[0].credits,null);
+assert.equal(normalizeImportedCourses({password:'not-an-array'}).length,0);
+console.log('PASS: exact code matching, unknown historical courses retained, no credential/grade/session fields stored, duplicate merging and invalid credit sanitization.');
