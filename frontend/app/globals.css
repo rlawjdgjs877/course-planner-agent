@@ -132,3 +132,26 @@
 .school-import-progress>div{flex:1;display:flex;flex-direction:column;gap:4px}
 .school-import-progress strong{font-size:12px;font-weight:500}
 .school-import-progress small{font-size:10px;color:#93a8c0}
+/* 시간표 옆 에이전트 채팅 */
+.results-with-chat{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;align-items:start}.results-with-chat>.timetable-results{min-width:0}
+@media (max-width:1240px){.results-with-chat{grid-template-columns:minmax(0,1fr)}}
+.agent-chat{position:sticky;top:16px;display:flex;flex-direction:column;max-height:calc(100vh - 40px);min-height:420px;border:1px solid #dbe6f3;border-radius:14px;background:linear-gradient(180deg,#f7fbff,#fff);box-shadow:0 10px 30px -18px #2c5d9a55;overflow:hidden}
+@media (max-width:1240px){.agent-chat{position:static;max-height:none}}
+.agent-chat-header{display:flex;gap:10px;align-items:center;padding:14px 14px 12px;border-bottom:1px solid #e6edf6}.agent-chat-header strong{display:block;font-size:13px}.agent-chat-header small{display:block;color:var(--muted);font-size:10.5px;margin-top:2px}
+.agent-chat-mark{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:var(--blue);color:#fff;flex-shrink:0}
+.agent-chat-log{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;min-height:200px}
+.agent-chat-empty{color:var(--muted);font-size:12px;text-align:center;margin:auto 6px}
+.agent-msg{max-width:92%;padding:9px 11px;border-radius:12px;font-size:12.5px;line-height:1.55;white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere}.agent-msg p{margin:0}
+.agent-msg.assistant{align-self:flex-start;background:#fff;border:1px solid #e3e9f1}.agent-msg.user{align-self:flex-end;background:var(--blue);color:#fff}
+.agent-msg.error{background:#fff6f4;border-color:#f3c9bf;color:#9b3b26}
+.agent-msg.pending{display:flex;align-items:center;gap:8px;color:#5c6b7d}.agent-msg.pending .button-spinner{border-color:#b9cbe0;border-top-color:var(--blue)}
+.agent-steps{list-style:none;margin:0 0 7px;padding:0 0 7px;border-bottom:1px dashed #e1e7ef;display:flex;flex-direction:column;gap:4px}.agent-steps li{display:flex;align-items:center;gap:6px;font-size:11px;color:#4f6a88}.agent-steps li.failed{color:#b0563f}
+.agent-applied{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;padding-top:7px;border-top:1px solid #e9eef5;font-size:11px;color:#2f8a57}.agent-applied button{border:1px solid #d6dee8;background:#fff;border-radius:7px;padding:3px 9px;font-size:11px;color:#4a5562}
+.agent-chat-unavailable{margin:0 12px 8px;padding:8px 10px;border-radius:9px;background:#fff8e6;color:#8a6412;font-size:11px}
+.agent-chat-suggestions{display:flex;gap:6px;overflow-x:auto;padding:8px 12px;border-top:1px solid #eef2f7;scrollbar-width:thin}.agent-chat-suggestions button{flex-shrink:0;border:1px solid #d7e4f3;background:#f2f8ff;color:#2a6fb8;border-radius:999px;padding:5px 10px;font-size:11px}
+.agent-chat-input{display:flex;gap:6px;padding:10px 12px 12px}.agent-chat-input input{flex:1;min-width:0;border:1px solid #d9e1eb;border-radius:9px;padding:9px 10px;background:#fff}.agent-chat-input .primary-button{padding:0 12px;min-height:36px}
+.prereq-warning .badge{margin-right:6px}
+details.manual-plan>summary{list-style:none;cursor:pointer}details.manual-plan>summary::-webkit-details-marker{display:none}details.manual-plan>summary h2::after{content:"펼치기 ▾";margin-left:8px;font-size:11px;color:var(--blue);font-weight:500}details.manual-plan[open]>summary h2::after{content:"접기 ▴"}
+/* 과목 고르기 (반드시 포함·제외) */
+.course-picker{display:flex;flex-direction:column;gap:6px}.course-picker-chips{display:flex;flex-wrap:wrap;gap:6px}.course-picker-chips span{display:inline-flex;align-items:center;gap:6px;background:#eef6ff;border:1px solid #cfe2f7;color:#245d99;border-radius:999px;padding:3px 4px 3px 10px;font-size:11.5px}.course-picker-chips button{border:0;background:#d9e9fb;color:#245d99;border-radius:50%;width:18px;height:18px;line-height:18px;padding:0;font-size:11px}
+.course-picker-suggest{position:relative}.course-picker-suggest ul{position:absolute;z-index:5;left:0;right:0;top:calc(100% + 4px);margin:0;padding:4px;list-style:none;background:#fff;border:1px solid #dfe5ec;border-radius:10px;box-shadow:0 12px 28px -12px #23344a40;max-height:240px;overflow-y:auto}.course-picker-suggest li button{width:100%;text-align:left;border:0;background:none;padding:7px 9px;border-radius:7px;display:flex;justify-content:space-between;gap:10px}.course-picker-suggest li button:hover,.course-picker-suggest li button:focus-visible{background:#f1f7ff}.course-picker-suggest small{color:var(--muted)}

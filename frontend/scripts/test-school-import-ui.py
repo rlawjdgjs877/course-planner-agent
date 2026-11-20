@@ -29,7 +29,7 @@ with sync_playwright() as p:
  page.get_by_text('수집 항목·이용 목적·보관 안내 보기',exact=True).click();expect(page.get_by_text('동의 거부',exact=True)).to_be_visible();page.get_by_text('수집 항목·이용 목적·보관 안내 보기',exact=True).click()
  school=page.get_by_role('button',name='학교 로그인으로 시작',exact=True);manual=page.get_by_role('button',name='직접 입력하기',exact=True)
  expect(school).to_be_disabled();expect(manual).to_be_enabled();left=school.bounding_box();right=manual.bounding_box();assert abs(left['y']-right['y'])<1 and abs(left['height']-right['height'])<1
- collection=page.get_by_role('checkbox',name=re.compile('이수 과목 정보의 수집·이용'));connection=page.get_by_role('checkbox',name=re.compile('학교 화면과 입력 내용의 연결 서버 처리'))
+ collection=page.get_by_role('checkbox',name=re.compile('이수 과목 정보의 수집·이용'));connection=page.get_by_role('checkbox',name=re.compile('아이디·비밀번호와 조회 내용이 연결 서버에서 일시 처리'))
  collection.check();expect(school).to_be_disabled();assert state['starts']==0
  connection.check();expect(school).to_be_enabled();collection.uncheck();expect(school).to_be_disabled();collection.check();school.click()
  expect(page.get_by_role('dialog',name='경북대학교 학교 로그인',exact=True)).to_be_visible()
@@ -64,7 +64,7 @@ with sync_playwright() as p:
  with page.expect_response('**/import/knu/stop'):page.get_by_role('button',name='학교 로그인 창 닫기',exact=True).click()
  expect(page.get_by_role('dialog')).to_have_count(0);assert state['stops']>=2
  assert page.evaluate('document.body.style.overflow')!='hidden'
- state['available']=False;page.reload(wait_until='networkidle');page.get_by_role('checkbox',name=re.compile('이수 과목 정보의 수집·이용')).check();page.get_by_role('checkbox',name=re.compile('학교 화면과 입력 내용의 연결 서버 처리')).check();page.get_by_role('button',name='학교 로그인으로 시작',exact=True).click()
+ state['available']=False;page.reload(wait_until='networkidle');page.get_by_role('checkbox',name=re.compile('이수 과목 정보의 수집·이용')).check();page.get_by_role('checkbox',name=re.compile('아이디·비밀번호와 조회 내용이 연결 서버에서 일시 처리')).check();page.get_by_role('button',name='학교 로그인으로 시작',exact=True).click()
  expect(page.get_by_text('미사용 테스트 상태',exact=True)).to_be_visible();expect(page.get_by_role('button',name='불러오기 시작',exact=True)).to_have_count(0)
  page.get_by_role('button',name='학교 로그인 창 닫기',exact=True).click();page.get_by_role('button',name='직접 입력하기',exact=True).click()
  expect(page.get_by_role('heading',name='나의 컴학 생활',exact=True)).to_be_visible()

@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { buildGenerateRequest, generateTimetable, type GenerateTimetableResponse } from "../lib/api";
+import { agentChat, buildGenerateRequest, generateTimetable, planningFromRequest, type GenerateTimetableResponse } from "../lib/api";
+import type { AgentChatEntry } from "./agent-chat";
 import { courses } from "../lib/courses";
 import { Folder, Icon } from "./icons";
 import { AcademicDocuments } from "./academic-documents";
@@ -9,7 +10,6 @@ import { SchedulePreview } from "./schedule-preview";
 import { PlanningSettings } from "./planning-settings";
 import { defaultPlanning, restorePlanning, type PlanningConstraints } from "../lib/planning";
 import { StudentProfileCard } from "./student-profile-card";
-import { CourseOfferings } from "./course-offerings";
 import { courseMatchesSource, courseMatchesYear, courseGradeLabel, courseSources } from "../lib/offerings";
 import { AcademicLinkEntry } from "./academic-link-entry";
 import { SchoolImportDialog } from "./school-import-dialog";
@@ -46,7 +46,15 @@ export default function FinderApp() {
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const generateAbort = useRef<AbortController | null>(null);
-  useEffect(() => () => generateAbort.current?.abort(), []);
+  // 시간표 옆 에이전트 채팅. 대화와 되돌리기 정보는 이 화면에서만 유지한다.
+  const [chatEntries, setChatEntries] = useState<AgentChatEntry[]>([]);
+  const [agentBusy, setAgentBusy] = useState<string | null>(null);
+  const [agentUnavailable, setAgentUnavailable] = useState<string | null>(null);
+  const [viewingId, setViewingId] = useState<string | null>(null);
+  const chatSeq = useRef(0);
+  const undoSnapshots = useRef(new Map<number, { result: { response: GenerateTimetableResponse; requestKey: string; run: number } | null; planning: PlanningConstraints }>());
+  const agentAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => { generateAbort.current?.abort(); agentAbort.current?.abort(); }, []);
   useEffect(() => {
     const restoreTimer = window.setTimeout(() => {
     try {
@@ -96,7 +104,7 @@ export default function FinderApp() {
   const navigate = (index: number) => { setSection(index); setQuery(""); setYear(null); window.scrollTo({ top: 0, behavior: "auto" }); };
   const startWith = (method: AcademicInputMethod) => { setInputMethod(method); navigate(0); setShowChoice(false); };
   const openSchoolDialog = () => { if (hasSchoolPrivacyConsent(schoolConsent)) setSchoolDialogOpen(true); else { navigate(0); setShowChoice(true); } };
-  const requestBody = buildGenerateRequest(planning, student, completed);
+  const requestBody = buildGenerateRequest(planning, student, completedRecords);
   const requestKey = JSON.stringify(requestBody);
   async function generate() {
     generateAbort.current?.abort();
@@ -107,12 +115,60 @@ export default function FinderApp() {
       const response = await generateTimetable(requestBody, controller.signal);
       setResult(prev => ({ response, requestKey, run: (prev?.run ?? 0) + 1 }));
       navigate(2);
+      const first = response.candidates[0]?.id ?? null;
+      if (first) void askAgent("summary", "", first);
+      else addEntry({ role: "assistant", content: "이 조건으로는 시간표를 만들지 못했어요. 비울 요일이나 꼭 넣을 과목 중 무엇을 풀지 말해 주시면 다시 짜 볼게요." });
     } catch (error) {
       if (!controller.signal.aborted) setGenerateError(error instanceof Error ? error.message : "시간표를 만들지 못했습니다.");
     } finally {
       if (generateAbort.current === controller) { setGenerating(false); generateAbort.current = null; }
     }
   }
+  function addEntry(entry: Omit<AgentChatEntry, "id">) {
+    const id = ++chatSeq.current;
+    setChatEntries(prev => [...prev, { ...entry, id }]);
+    return id;
+  }
+  async function askAgent(mode: "chat" | "summary", message: string, candidateId: string | null = viewingId) {
+    agentAbort.current?.abort();
+    const controller = new AbortController();
+    agentAbort.current = controller;
+    const history = chatEntries.filter(e => !e.error).slice(-10).map(e => ({ role: e.role, content: e.content }));
+    if (mode === "chat") addEntry({ role: "user", content: message });
+    setAgentBusy(mode === "summary" ? "만든 시간표를 살펴보는 중…" : "과목을 찾고 시간표를 살펴보는 중…");
+    const before = { result, planning };
+    try {
+      const response = await agentChat({ mode, message, request: requestBody, candidate_id: candidateId, history }, controller.signal);
+      setAgentUnavailable(null);
+      if (response.applied && response.result) {
+        const nextPlanning = planningFromRequest(response.request, planning);
+        const nextKey = JSON.stringify(buildGenerateRequest(nextPlanning, student, completedRecords));
+        const id = addEntry({ role: "assistant", content: response.reply, steps: response.steps, applied: true });
+        undoSnapshots.current.set(id, before);
+        setPlanning(nextPlanning);
+        setResult(prev => ({ response: response.result!, requestKey: nextKey, run: (prev?.run ?? 0) + 1 }));
+      } else {
+        addEntry({ role: "assistant", content: response.reply, steps: response.steps, summary: mode === "summary" });
+      }
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      const text = error instanceof Error ? error.message : "에이전트가 답하지 못했어요.";
+      if (/ANTHROPIC_API_KEY/.test(text)) setAgentUnavailable(text);
+      addEntry({ role: "assistant", content: text, error: true });
+    } finally {
+      if (agentAbort.current === controller) { setAgentBusy(null); agentAbort.current = null; }
+    }
+  }
+  const lastApplied = [...chatEntries].reverse().find(e => e.applied && !e.undone)?.id ?? null;
+  function undoAgent(id: number) {
+    const snapshot = undoSnapshots.current.get(id);
+    if (!snapshot || id !== lastApplied) return;
+    setPlanning(snapshot.planning);
+    setResult(snapshot.result ? { ...snapshot.result, run: (result?.run ?? 0) + 1 } : null);
+    setChatEntries(prev => prev.map(e => e.id === id ? { ...e, undone: true } : e));
+    undoSnapshots.current.delete(id);
+  }
+  const chatProps = { entries: chatEntries, busy: agentBusy !== null, busyLabel: agentBusy, unavailable: agentUnavailable, onSend: (message: string) => void askAgent("chat", message), onUndo: undoAgent, canUndo: (id: number) => id === lastApplied };
   return <div className={`desktop ${showChoice ? "is-welcome" : ""}`}>
     <header className="desktop-bar"><span className="desktop-brand"><Icon name="book" size={17} /> Plann</span><span className="desktop-menu">파일 <span>편집</span> <span>보기</span></span><span className="desktop-right">나의 대학 생활, 차곡차곡.</span></header>
 
@@ -137,14 +193,13 @@ export default function FinderApp() {
           {section === 0 && <><div className="chosen-input-method"><span>입력 방법: <strong>{inputMethod === "school" ? "학교 로그인으로 불러오기" : inputMethod === "link" ? "학적 링크 입력" : "직접 입력"}</strong></span><button type="button" onClick={() => { setShowChoice(true); window.scrollTo({ top: 0, behavior: "auto" }); }}>입력 방법 바꾸기</button></div>{inputMethod === "school" ? <><div className="cohort-note"><strong>학교에서 확인한 이수 내역을 아래에서 확인하세요.</strong><p>새로 불러오려면 학교 로그인 창을 다시 열 수 있습니다.</p><button className="primary-button" onClick={openSchoolDialog}>학교 로그인 창 다시 열기</button></div><details className="manual-profile"><summary>학년·전공 등 추가 학생 정보 확인</summary><StudentProfileCard profile={student} onChange={setStudent} /></details></> : inputMethod === "link" ? <AcademicLinkEntry savedLink={academicLink} onSave={setAcademicLink} /> : <StudentProfileCard profile={student} onChange={setStudent} />}</>}
           {section === 0 ? <>
             <ImportedCourseSummary courses={importedCourses} matchedCodes={catalogCodes} onRemove={removeImported} />
-            <CourseOfferings sourceId={sourceFilter} onSourceChange={setSourceFilter} plannedIds={plannedIds} onPlanToggle={togglePlanned} />
             <div className="progress-card"><span className="progress-symbol"><Icon name="check" size={21} /></span><div className="progress-copy"><strong>전공·교양 과목, 차근차근 정리해요</strong><span>PDF와 JSON에 수록된 과목입니다. 분반은 한 과목으로 묶으며 졸업 충족률을 뜻하지 않습니다.</span></div><div className="progress-number"><strong>{selected.length}<span> / {courses.length}</span></strong><small>이수 과목</small></div><div className="progress-track"><div style={{ width: `${selected.length / courses.length * 100}%` }} /></div></div>
             <label className="document-field">이수 체크할 과목 분류<select value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}><option value="all">전체 전공·교양</option>{courseSources.map(source => <option value={source.id} key={source.id}>{source.label}</option>)}</select></label>
             <div className="section-heading"><h2>{query ? "검색 결과" : year !== null ? (year === 0 ? "공통·학년 미지정" : `${year}학년 과목`) : "과목 폴더"}<span>{query || year !== null ? `${filtered.length}개 과목` : "5개 폴더"}</span></h2><span>{year !== null || query ? "체크하여 이수 과목 선택" : "폴더를 클릭해 과목을 확인하세요"}</span></div>
             {year === null && !query ? <div className={`folder-grid ${view === "list" ? "folder-list" : ""}`}>{folders.map(n => { const count = completed.filter(c => courseMatchesSource(c, sourceFilter) && courseMatchesYear(c, n, sourceFilter)).length; return <button className="folder-card" key={n} onClick={() => setYear(n)}><Folder /><strong>{n === 0 ? "공통·학년 미지정" : `${n}학년`}</strong><span>{courses.filter(c => courseMatchesSource(c, sourceFilter) && courseMatchesYear(c, n, sourceFilter)).length}개 과목 <b>·</b> {n === 0 ? "전학년·미확인" : "2026년 2학기"}</span><small className={count ? "has-completed" : ""}>{count ? `${count}개 이수 완료` : "이수 과목 선택하기"}</small></button>; })}</div> : <div className="course-list">{filtered.length ? <><div className="course-table-heading"><span>과목명</span><span>구분 · 학점</span></div>{filtered.map(c => <label className={`course-row ${selected.includes(c.id) ? "checked" : ""}`} key={c.id}><input type="checkbox" checked={selected.includes(c.id)} onChange={() => toggle(c.id)} /><span className="course-file"><Icon name="book" size={18} /></span><span className="course-name"><strong>{c.name}</strong><small>{courseGradeLabel(c, sourceFilter)} · {c.semester}{c.code && ` · ${c.code}`}</small></span><span className="course-category">{c.category}</span><span className="course-credit">{c.credits === null ? "학점 미기재" : `${c.credits}학점`}</span></label>)}</> : <div className="empty-state"><Icon name="search" size={30} /><p>표시할 과목이 없어요. 조건을 바꾸거나 공통·학년 미지정 폴더를 확인해 주세요.</p><button onClick={() => setQuery("")}>검색어 지우기</button></div>}</div>}
             <div className="tip"><Icon name="info" size={17} /><div><strong>이수 과목부터 정리하면 더 쉬워요.</strong><p>2026년 2학기 수강신청 전 기준으로 이전 학기까지 완료한 과목만 체크해 주세요. 2026-2 수강 중인 과목은 체크하지 않습니다. 전공·교양을 선택하면 해당 자료의 학년을 기준으로 폴더가 나뉩니다. 전공마다 학년이 다른 과목은 여러 폴더에 보이지만 한 번만 이수 처리됩니다. 개설 학점은 이번 학기 조회값이며 과거 학점 인정은 별도 확인이 필요합니다.</p></div></div>
             <AcademicDocuments key={student.majorId} selected={selected} toggle={toggle} student={student} onMajorChange={majorId => setStudent(prev => ({ ...prev, majorId }))} />
-          </> : section === 1 ? <PlanningSettings value={planning} onChange={setPlanning} onGenerate={generate} generating={generating} generateError={generateError} studentReady={requestBody.track !== null && requestBody.grade !== null} /> : <SchedulePreview selected={selected} planning={planning} plannedIds={plannedIds} onPlanToggle={togglePlanned} result={result?.response ?? null} resultRun={result?.run ?? 0} resultStale={!!result && result.requestKey !== requestKey} onRegenerate={generate} generating={generating} generateError={generateError} />}
+          </> : section === 1 ? <PlanningSettings value={planning} onChange={setPlanning} onGenerate={generate} generating={generating} generateError={generateError} studentReady={requestBody.track !== null && requestBody.grade !== null} /> : <SchedulePreview selected={selected} planning={planning} plannedIds={plannedIds} onPlanToggle={togglePlanned} result={result?.response ?? null} resultRun={result?.run ?? 0} resultStale={!!result && result.requestKey !== requestKey} onRegenerate={generate} generating={generating} generateError={generateError} onCurrentChange={setViewingId} chat={chatProps} />}
           </>}
         </main>
         {!showChoice && <footer className="content-footer"><span><i className="saved-dot" />{saveState}</span>{section < 2 ? <button className="primary-button" onClick={() => navigate(section + 1)}>{section === 0 ? "시간표 조건 설정" : "담은 시간표 확인"}<Icon name="arrow" size={15} /></button> : <button className="primary-button" onClick={() => navigate(1)}>조건 다시 설정<Icon name="sliders" size={16} /></button>}</footer>}

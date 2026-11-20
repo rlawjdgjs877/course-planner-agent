@@ -63,7 +63,7 @@ pip install -r requirements.txt
 
 ### 4. 환경변수 파일 만들기
 
-`.env.example`을 복사해 `.env`를 만들고 `OPENAI_API_KEY=` 뒤에 키를, `OPENAI_MODEL=` 뒤에 사용할 모델 이름을 넣습니다. 채팅 기능에만 필요하고, 없어도 시간표 만들기는 동작합니다.
+`.env.example`을 복사해 `.env`를 만들고 `ANTHROPIC_API_KEY=` 뒤에 Claude API 키를 넣습니다. 모델은 기본 `claude-opus-5-5`이고, 바꾸려면 `CLAUDE_MODEL=`을 적습니다. 에이전트 채팅과 시간표 요약에만 필요하고, 없어도 시간표 만들기는 동작합니다.
 
 Windows (PowerShell):
 
@@ -98,7 +98,8 @@ uvicorn app.main:app --reload
 | 주소 | 설명 |
 |---|---|
 | `GET /` | 시연용 화면 (`backend/app/static/index.html`). 조건을 고르면 시간표 화면으로 넘어가고, 그 아래 채팅으로 고칠 수 있음 |
-| `POST /chat` | 말로 시간표 고치기. 예: "세계의 문화 추가해줘", "운영체제 빼줘". OpenAI 키 필요 |
+| `POST /agent/chat` | 시간표 에이전트 (Plann 화면의 채팅). 만든 시간표 요약, 과목 찾기, 말로 시간표 고치기, 선수과목 확인. Claude 키 필요 |
+| `POST /chat` | 시연용 화면의 채팅 (옛 형식 `/timetables` 용). 조건만 고쳐 다시 만든다. Claude 키 필요 |
 | `/import/knu/*` | 경북대 이수 과목 불러오기 (실험 기능, 기본 켜짐). 아래 설명 참고 |
 | `POST /tools/generate_timetable` | 에이전트 도구 정의 v3.2 형식의 시간표 생성 (프론트엔드용). 자세한 모양은 `docs/api-contract.md` |
 | `GET /tools/candidates/{id}` | 앞서 만든 후보(tt_001, tt_alt_001) 다시 가져오기 |
@@ -149,7 +150,21 @@ AI는 사용자의 말을 이해해 **조건만** 고치고, 시간표는 `POST 
 3. 고친 조건으로 시간표를 다시 만듭니다. 지금 시간표의 과목은 가능하면 유지합니다.
 4. 조건에 맞는 시간표가 없으면 적용하지 않고 이유를 답합니다.
 
-`backend/.env`에 `OPENAI_API_KEY`와 `OPENAI_MODEL`이 둘 다 있어야 동작합니다. 없으면 503과 함께 안내 문구를 돌려줍니다. 관련 코드는 `backend/app/agent/chat.py`에 있습니다.
+`backend/.env`에 `ANTHROPIC_API_KEY`가 있어야 동작합니다. 없으면 503과 함께 안내 문구를 돌려줍니다. 관련 코드는 `backend/app/agent/chat.py`에 있습니다.
+
+### POST /agent/chat
+
+Plann 화면의 '나의 시간표' 옆 채팅이 부르는 에이전트입니다. Claude가 학생의 말을 해석해 도구를 고르고, 시간·학점·충돌 계산은 모두 코드가 합니다 (`backend/app/agent/planner_agent.py`).
+
+| 도구 | 하는 일 |
+|---|---|
+| `search_courses` | 2026-2 개설 강좌를 과목명·코드·교수·교과구분·교양 영역·요일·학년으로 찾기. 지금 시간표와 겹치지 않는 분반만 고를 수도 있음 |
+| `update_timetable` | 과목 넣기·빼기·분반 바꾸기, 공강, 피할 시간, 학점을 고쳐 `planner.generate`로 다시 만들기. 보고 있는 안(`candidate_id`)의 과목을 가능하면 유지. 만들 수 없으면 화면을 바꾸지 않고 이유와 대안을 돌려줌 |
+| `check_prerequisites` | 학과 전공 소개의 선후수 흐름(`app/data/prerequisites.json`)으로 먼저 들으면 좋은 과목과 이수 여부 확인 |
+
+- `mode: "summary"`: 시간표를 만든 직후 화면이 부릅니다. 도구 없이 요약만 합니다.
+- 응답의 `steps`는 부른 도구 목록이라 화면에 진행 단계로 보여 줍니다. `applied`가 `true`면 `result`(새 시간표)와 `request`(고친 조건)를 화면에 반영합니다.
+- 선후수 자료는 학과의 '권장 순서'라 수강을 막지 않고, 이수 기록이 없으면 시간표 점수를 깎고 경고만 합니다. 프론트엔드의 `frontend/app/lib/data/prerequisites.json`과 같은 파일이어야 합니다 (테스트로 확인).
 
 ## 프론트엔드와 연결
 

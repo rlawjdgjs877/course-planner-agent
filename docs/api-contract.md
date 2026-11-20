@@ -64,6 +64,7 @@ python -m scripts.import_data offerings ../frontend/data/course-sources
   "track": "advanced",
   "grade": 2,
   "completed": ["COMP0101", "COMP0102"],
+  "completed_names": ["기초프로그래밍", "자료구조"],
   "max_candidates": 3
 }
 ```
@@ -83,9 +84,12 @@ python -m scripts.import_data offerings ../frontend/data/course-sources
 | `track` | v3.2 밖 확장 | `advanced` `ai` `research` `platform` `global`. 같은 분반의 이수구분을 이 트랙 기준으로 고름 |
 | `grade` | v3.2 밖 확장 | 학생 학년. 그 학년 과목을 우선 (임시 기준) |
 | `completed` | v3.2 밖 확장 | 이미 이수한 과목코드. 후보에서 뺌. 프론트엔드 내부 id(`knu-1` 등)가 아니라 **과목코드**로 보내 주세요 |
+| `completed_names` | v3.2 밖 확장 | 이미 이수한 과목명. 선수과목(학과 권장 순서) 확인에 씀. 이번 학기에 열리지 않는 과목은 코드만으로 이름을 알 수 없어서 따로 받음 |
 | `max_candidates` | | 1~5, 기본 3 |
 
 자동 추천에서는 상주캠퍼스 강좌, 교직 과목, 시간 미정 강좌를 뺍니다. `must_include`로 직접 넣으면 넣습니다.
+
+점수에서 깎는 것 (넣을 수는 있지만 덜 고름): 신청 인원이 정원 이상인 분반, 토·일 수업, 학과 권장 순서상 먼저 들을 과목의 이수 기록이 없는 과목(이수 과목을 하나라도 보냈을 때만). 선수과목은 후보 `warnings`에 "먼저 들으면 좋은 …"으로 알립니다.
 
 ### 응답
 
@@ -134,9 +138,41 @@ python -m scripts.import_data offerings ../frontend/data/course-sources
 
 `tt_001`, `tt_alt_001` 등. 대안을 고르면 새로 만들지 않고 이것으로 가져옵니다. 없으면 404.
 
-## 4. 말로 고치기: `POST /chat` (바뀔 예정)
+## 4. 시간표 에이전트: `POST /agent/chat`
 
-지금은 OpenAI로 조건을 고치는 시연용입니다. 팀 문서대로 Claude 도구 호출로 바꾸면서 요청·응답도 v3.2 후보(`tt_` id) 기준으로 바꿀 예정이라, 프론트엔드는 아직 붙이지 않는 것을 권합니다.
+Plann의 '나의 시간표' 옆 채팅이 씁니다 (`frontend/app/lib/api.ts`의 `agentChat`). Claude가 도구(`search_courses`, `update_timetable`, `check_prerequisites`)를 골라 쓰고, 시간표는 항상 2장의 생성기가 다시 만듭니다.
+
+요청:
+
+```json
+{
+  "mode": "chat",
+  "message": "금요일 비워주고 운영체제 넣어줘",
+  "request": { "...": "2장 요청 본문 그대로 (지금 시간표를 만든 조건)" },
+  "candidate_id": "tt_001",
+  "history": [{ "role": "assistant", "content": "18학점 시간표예요…" }]
+}
+```
+
+- `mode: "summary"`: 시간표를 만든 직후 부릅니다. `message`는 비워도 됩니다. 도구 없이 `candidate_id` 시간표를 요약합니다.
+- `candidate_id`: 학생이 지금 보고 있는 안. 고칠 때 이 안의 과목을 가능하면 유지합니다.
+
+응답:
+
+```json
+{
+  "reply": "금요일을 비우고 운영체제 001분반을 넣었어요. …",
+  "steps": [{ "tool": "search_courses", "label": "과목 검색: 운영체제 (1개)", "ok": true },
+            { "tool": "update_timetable", "label": "시간표 다시 만들기: 넣기 COMP0312, 공강 금", "ok": true }],
+  "applied": true,
+  "request": { "...": "고친 조건 (2장 형식)" },
+  "result": { "...": "2장 응답 형식의 새 시간표. applied 가 false 면 null" }
+}
+```
+
+키(`ANTHROPIC_API_KEY`)가 없으면 503, Claude 호출이 실패하면 502와 `detail` 안내 문구를 돌려줍니다.
+
+`POST /chat`은 백엔드 시연 화면(옛 `/timetables` 형식)용으로 남겨 두었습니다. Plann은 쓰지 않습니다.
 
 ## 5. 이수 과목 불러오기: `/import/knu/*` (실험 기능, 기본 켜짐)
 

@@ -43,14 +43,14 @@ function CandidateView({ candidate }: { candidate: Candidate }) {
   return <div className="candidate-view">
     <div className="schedule-summary"><span className="badge">{candidate.id.startsWith("tt_alt") ? "대안" : "자동 생성"}</span><span>{candidate.sections.length}개 분반 · {candidate.total_credits}학점</span><span>공강 {candidate.free_days.length ? candidate.free_days.join("·") : "없음"}</span><span>수업 사이 빈 시간 {Math.round(candidate.gap_minutes / 60 * 10) / 10}시간</span><span>{Object.entries(candidate.credits_by_category).map(([k, v]) => `${k} ${v}`).join(" · ")}</span></div>
     <WeekGrid candidate={candidate} />
-    {candidate.warnings.length > 0 && <div className="manual-plan-issues">{candidate.warnings.map(w => <p key={w}>{w}</p>)}</div>}
+    {candidate.warnings.length > 0 && <div className="manual-plan-issues">{candidate.warnings.map(w => <p key={w} className={w.includes("먼저 들으면 좋은") ? "prereq-warning" : ""}>{w.includes("먼저 들으면 좋은") && <span className="badge">선수과목</span>}{w}</p>)}</div>}
     <div className="planned-sections">{candidate.sections.map(s => <article key={s.course_id}><div><span>{s.course_id} · {s.credits}학점 · {s.category}{s.area ? ` · ${s.area}` : ""}</span><h3>{s.name}</h3><p>{s.professor || "교수 미정"}{s.grade ? ` · ${s.grade === "*" ? "전학년" : `${s.grade}학년`}` : ""}</p><p>{s.time_raw || "시간 미정"}</p>{s.capacity !== null && s.enrolled !== null && <small>신청 {s.enrolled} / 정원 {s.capacity} (학교 자료 짐작값)</small>}</div></article>)}</div>
   </div>;
 }
 
-type Props = { result: GenerateTimetableResponse; stale: boolean; onRegenerate: () => void; generating: boolean; generateError: string | null };
+type Props = { result: GenerateTimetableResponse; stale: boolean; onRegenerate: () => void; generating: boolean; generateError: string | null; onCurrentChange?: (candidateId: string | null) => void };
 
-export function TimetableResults({ result, stale, onRegenerate, generating, generateError }: Props) {
+export function TimetableResults({ result, stale, onRegenerate, generating, generateError, onCurrentChange }: Props) {
   const [tab, setTab] = useState(0);
   const [alternative, setAlternative] = useState<Candidate | null>(null);
   const [loadingAlt, setLoadingAlt] = useState<string | null>(null);
@@ -75,6 +75,9 @@ export function TimetableResults({ result, stale, onRegenerate, generating, gene
   const tabs = [...result.candidates, ...(alternative ? [alternative] : [])];
   const current = tabs[Math.min(tab, tabs.length - 1)];
   const text = statusText[result.status];
+  // 에이전트가 '지금 보고 있는 안'을 바탕으로 고칠 수 있도록 부모에게 알린다.
+  const currentId = current?.id ?? null;
+  useEffect(() => { onCurrentChange?.(currentId); }, [currentId, onCurrentChange]);
   return <div className="timetable-results">
     <div className={`manual-plan-status ${result.status === "success" ? "" : "needs-review"}`} role="status"><strong><span className="badge">{text.badge}</span> {text.title}</strong><p>{text.body} 탐색은 일부 조합만 살펴볼 수 있어 최적해를 보장하지 않습니다.</p></div>
     {stale && <div className="stale-note" role="status"><span>조건이나 이수 과목이 바뀌었어요. 지금 보이는 후보는 이전 조건으로 만든 것입니다.</span><button className="primary-button" disabled={generating} onClick={onRegenerate}>{generating ? <><span className="button-spinner" aria-hidden="true" />만드는 중…</> : "새 조건으로 다시 만들기"}</button></div>}
@@ -86,6 +89,6 @@ export function TimetableResults({ result, stale, onRegenerate, generating, gene
       <CandidateView key={current.id} candidate={current} />
     </>}
     {result.alternatives.length > 0 && <div className="result-block"><h3>조건을 하나 풀면 이런 안이 있어요</h3><div className="alternative-list">{result.alternatives.map(a => <div className="alternative-card" key={a.id}><div><strong>{a.description}</strong><small>풀어 준 조건: {a.relaxed.join(", ")}</small></div><button className="secondary-button" disabled={loadingAlt !== null} onClick={() => pickAlternative(a.id)}>{loadingAlt === a.id ? "불러오는 중…" : alternative?.id === a.id ? "다시 보기" : "이 대안 보기"}</button></div>)}</div>{altError && <div className="planning-errors" role="alert"><p>{altError}</p></div>}</div>}
-    <div className="tip"><Icon name="info" size={17} /><p>후보는 서버 메모리에 잠시 보관됩니다. 서버를 다시 켜면 대안을 불러올 수 없으니 다시 만들어 주세요. 선수과목과 졸업 요건은 아직 검증하지 않습니다.</p></div>
+    <div className="tip"><Icon name="info" size={17} /><p>후보는 서버 메모리에 잠시 보관됩니다. 서버를 다시 켜면 대안을 불러올 수 없으니 다시 만들어 주세요. 선수과목은 학과 전공 소개의 권장 순서로만 확인하며(수강 제한 아님), 졸업 요건은 아직 검증하지 않습니다.</p></div>
   </div>;
 }
