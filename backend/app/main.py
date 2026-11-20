@@ -7,11 +7,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from app.routers import chat, courses, knu_import, timetables, tools
+from app.routers import agent, chat, courses, knu_import, timetables, tools
 from app.services.knu_session import manager as knu_manager
 from app.settings import FRONTEND_ORIGINS
 
-# backend/.env 파일이 있으면 환경변수(OPENAI_API_KEY 등)를 읽어 온다.
+# backend/.env 파일이 있으면 환경변수(ANTHROPIC_API_KEY 등)를 읽어 온다.
 load_dotenv()
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -35,6 +35,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(agent.router)
 app.include_router(chat.router)
 app.include_router(courses.router)
 app.include_router(knu_import.router)

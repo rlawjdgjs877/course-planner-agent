@@ -25,6 +25,7 @@ from app.schemas import (
     TimetableRequest,
     TimetableResult,
 )
+from app.services import prerequisites
 from app.services.timetable import _block_mask, _time_mask, generate_timetables
 
 CREDIT_CAP = 19  # 도구 정의서의 기본 상한. 학칙으로 검증한 개인별 상한은 아니다.
@@ -36,6 +37,10 @@ GE_AREAS = {  # 교양 자료 이름 → 영역 이름 (frontend/app/lib/data/so
     "literacy": "첨성인소양",
 }
 MAX_RELAXATIONS = 6  # 대안을 찾을 때 하나씩 풀어 보는 조건 수
+FULL_PENALTY = 4  # 신청 인원이 정원 이상인 분반
+WEEKEND_PENALTY = 6  # 토·일 수업이 있는 분반
+WEEKEND = ("토", "일")
+PREREQ_PENALTY = 3  # 학과 권장 순서상 먼저 들을 과목의 이수 기록이 없는 분반
 
 
 class _CandidateStore:
@@ -98,6 +103,10 @@ def fit_bonus(course: Course, track: str | None, grade: int | None) -> float:
             bonus += 1
         elif level >= grade + 2:
             bonus -= 2
+    if course.capacity and course.enrolled is not None and course.enrolled >= course.capacity:
+        bonus -= FULL_PENALTY  # 정원이 찬 분반은 실제로 넣기 어렵다
+    if any(meeting.day in WEEKEND for meeting in course.meetings):
+        bonus -= WEEKEND_PENALTY  # 주말 수업은 평일 공강 점수(+2)보다 크게 깎아, 꼭 필요할 때만 넣는다
     return bonus
 
 
@@ -148,11 +157,6 @@ class _Plan:
         if request.track and not self.track:
             self.warnings.append(f"알 수 없는 트랙({request.track})이라 컴학 공통 기준으로 이수구분을 정했습니다.")
         self.courses = [for_track(course, self.track) for course in catalog]
-        self.fit = {
-            course.course_id: bonus
-            for course in self.courses
-            if (bonus := fit_bonus(course, self.track, request.grade))
-        }
 
         base = store.get(request.base_candidate_id)
         if request.base_candidate_id and base is None:
@@ -174,9 +178,28 @@ class _Plan:
             else:
                 self.excluded_codes |= {c.course_code for c in found}
 
+        # 선후수 확인: 이수 기록(과목코드·과목명)이 하나라도 있을 때만 한다. 없으면 모든 과목이 '미이수'로 보인다.
+        self.check_prereq = bool(request.completed or request.completed_names)
+        self.completed_names = (
+            {prerequisites.normalize(name) for name in [*request.completed_names, *request.completed]}
+            | {prerequisites.normalize(c.name) for c in self.courses if c.course_code in self.completed}
+        )
+        self.fit = {}
+        for course in self.courses:
+            bonus = fit_bonus(course, self.track, request.grade)
+            if self.prereq_missing(course):
+                bonus -= PREREQ_PENALTY
+            if bonus:
+                self.fit[course.course_id] = bonus
+
         self.free_blocks = [TimeBlock(day=day, start="00:00", end="24:00") for day in request.free_days]
         self.blocked = [TimeBlock(day=b.day, start=b.start, end=b.end) for b in request.blocked_times]
         self.avoid = [TimeBlock(day=b.day, start=b.start, end=b.end) for b in request.avoid_times]
+
+    def prereq_missing(self, course: Course) -> list[tuple[str, ...]]:
+        if not self.check_prereq:
+            return []
+        return prerequisites.missing(course.name, self.completed_names)
 
     # ---------- 반드시 넣을 과목 ----------
 
@@ -280,6 +303,10 @@ class _Plan:
                 warnings.append(f"{label}이 피하고 싶은 시간과 겹칩니다.")
             if not course.meetings:
                 warnings.append(f"{label}은 수업 시간이 정해지지 않았습니다.")
+            for stage in self.prereq_missing(course):
+                warnings.append(
+                    f"{course.name}: 먼저 들으면 좋은 {prerequisites.display(stage)}의 이수 기록이 없습니다 (학과 권장 순서)."
+                )
         result = Candidate(
             id=store.new_id(kind),
             sections=timetable.courses,
@@ -328,16 +355,20 @@ class _Plan:
 
     def respond(self) -> GenerateTimetableResponse:
         result, musts, omitted, below_min = self.solve(self.free_blocks, self.blocked, self.request.max_candidates)
-        candidates = [self.candidate(timetable, "tt") for timetable in result.timetables]
+        # 과목이 하나도 없는 시간표는 후보로 보여 주지 않는다 (모든 요일을 비우는 등 조건이 너무 좁을 때 생긴다)
+        candidates = [self.candidate(timetable, "tt") for timetable in result.timetables if timetable.courses]
         warnings = list(self.warnings)
         if below_min and candidates:
             warnings.append(f"최소 {self.min_credits:g}학점을 채우는 시간표가 없어 {candidates[0].total_credits:g}학점으로 만들었습니다.")
+        if not self.check_prereq and any(
+            prerequisites.requirements_of(section.name) for c in candidates for section in c.sections
+        ):
+            warnings.append("이수 과목을 입력하지 않아 선수과목(학과 권장 순서)은 확인하지 못했습니다.")
         if result.truncated:
             warnings.append("과목이 많아 일부 조합만 살펴봤습니다. 더 좋은 조합이 있을 수 있습니다.")
         if not candidates:
             status = "infeasible"
-            if result.message:
-                warnings.append(result.message)
+            warnings.append(result.message or "조건에 맞게 넣을 수 있는 과목이 없습니다. 비울 요일이나 시간을 줄여 보세요.")
         elif omitted or below_min:
             status = "partial"
         else:

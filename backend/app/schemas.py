@@ -305,6 +305,9 @@ class GenerateTimetableRequest(BaseModel):
         default=None, description="학생 트랙: advanced(심컴) ai(인컴) research(첨컴) platform(플솦) global(글솦)"
     )
     completed: list[str] = Field(default_factory=list, description="이미 이수한 과목코드")
+    completed_names: list[str] = Field(
+        default_factory=list, description="이미 이수한 과목명. 이번 학기에 열리지 않는 과목의 선후수 확인에 쓴다"
+    )
     grade: int | None = Field(default=None, ge=1, le=6, description="학생 학년. 그 학년 과목을 우선한다")
     max_candidates: int = Field(default=3, ge=1, le=5)
 

@@ -1,7 +1,8 @@
 fastapi
 uvicorn
-openai
+anthropic
 python-dotenv
 pydantic
 pytest
 openpyxl
+playwright

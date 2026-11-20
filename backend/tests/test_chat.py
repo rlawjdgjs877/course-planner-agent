@@ -1,4 +1,4 @@
-"""채팅 처리 테스트. 실제 OpenAI 를 부르지 않고, AI 의 답을 흉내 낸 함수를 넣어 확인한다."""
+"""채팅 처리 테스트. 실제 Claude 를 부르지 않고, AI 의 답을 흉내 낸 함수를 넣어 확인한다."""
 
 import json
 from pathlib import Path
@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.agent import chat as chat_module
+from app.agent import claude as claude_module
 from app.agent.chat import (
     AiAnswer,
     AiConditions,
@@ -202,13 +203,14 @@ def test_find_candidates_narrows_a_large_catalog():
 
 
 def test_endpoint_explains_missing_api_key(monkeypatch):
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.setattr(chat_module, "load_dotenv", lambda: None)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    monkeypatch.setattr(claude_module, "load_dotenv", lambda: None)
     response = TestClient(app).post(
         "/chat", json={"message": "금요일 비워줘", "request": {"min_credits": 9, "max_credits": 12}}
     )
     assert response.status_code == 503
-    assert "OPENAI_API_KEY" in response.json()["detail"]
+    assert "ANTHROPIC_API_KEY" in response.json()["detail"]
 
 
 def test_completed_courses_not_offered_this_semester_survive_an_edit(courses):

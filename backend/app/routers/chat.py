@@ -17,9 +17,9 @@ def chat(request: ChatRequest) -> ChatResponse:
         return handle_chat(request, load_courses())
     except ChatUnavailable as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
-    except Exception as error:  # OpenAI 호출 실패 (키 오류, 한도 초과, 네트워크 등)
+    except Exception as error:  # Claude 호출 실패 (키 오류, 한도 초과, 네트워크 등)
         logger.exception("chat failed")
         raise HTTPException(
             status_code=502,
-            detail="AI 응답을 받지 못했습니다. API 키, 모델 이름, 사용 한도를 확인한 뒤 다시 시도하세요.",
+            detail="AI 응답을 받지 못했습니다. API 키와 사용 한도를 확인한 뒤 다시 시도하세요.",
         ) from error

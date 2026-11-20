@@ -5,13 +5,13 @@ AI 는 사용자의 말을 이해해 '조건'만 고친다. 시간표는 항상 
 """
 
 import json
-import os
 import re
 from collections.abc import Callable
 
-from dotenv import load_dotenv
 from pydantic import BaseModel, ValidationError
 
+from app.agent import claude
+from app.agent.claude import ChatUnavailable  # noqa: F401  (라우터가 여기서 가져간다)
 from app.schemas import (
     ChatMessage,
     ChatRequest,
@@ -26,10 +26,6 @@ from app.services.timetable import generate_timetables
 CANDIDATE_LIMIT = 40
 HISTORY_LIMIT = 8
 _TIME = re.compile(r"^([01]\d|2[0-4]):[0-5]\d$")
-
-
-class ChatUnavailable(Exception):
-    """AI 를 쓸 준비가 안 됐을 때 (키나 모델 이름이 없음)."""
 
 
 # ---------- AI 와 주고받는 형식 ----------
@@ -89,32 +85,21 @@ reply 는 한국어 한두 문장으로, 무엇을 바꿨는지만 말한다."""
 
 
 def ask_model(payload: str, history: list[ChatMessage]) -> AiAnswer:
-    """OpenAI 에 물어 고친 조건을 받는다."""
-    load_dotenv()  # 서버를 켠 뒤 .env 를 만들어도 읽히도록 매번 확인한다
-    if not os.getenv("OPENAI_API_KEY"):
-        raise ChatUnavailable(
-            "수정 요청을 받으려면 backend/.env 파일에 OPENAI_API_KEY 를 넣어야 합니다."
-        )
-    model = os.getenv("OPENAI_MODEL")
-    if not model:
-        raise ChatUnavailable(
-            "수정 요청을 받으려면 backend/.env 파일에 OPENAI_MODEL(사용할 모델 이름)을 넣어야 합니다."
-        )
-
-    from openai import OpenAI
-
-    response = OpenAI().responses.parse(
-        model=model,
-        instructions=INSTRUCTIONS,
-        input=[
+    """Claude 에 물어 고친 조건을 받는다 (구조화 출력)."""
+    response = claude.client().messages.parse(
+        model=claude.model_name(),
+        max_tokens=4000,
+        output_config={"effort": "low"},
+        system=INSTRUCTIONS,
+        messages=[
             *({"role": item.role, "content": item.content} for item in history),
             {"role": "user", "content": payload},
         ],
-        text_format=AiAnswer,
+        output_format=AiAnswer,
     )
-    if response.output_parsed is None:
+    if response.parsed_output is None:
         raise ValueError("AI 가 정해진 형식으로 답하지 않았습니다.")
-    return response.output_parsed
+    return response.parsed_output
 
 
 # ---------- 조건 형식 바꾸기 ----------

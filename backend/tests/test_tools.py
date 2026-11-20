@@ -248,3 +248,38 @@ def test_real_catalog_follows_the_rules_and_is_fast():
         assert "금" in candidate.free_days
         assert not any("상주" in (s.building or "") for s in candidate.sections)
         assert not any(m.day == "월" and m.start < "12:00" for s in candidate.sections for m in s.meetings)
+
+
+# ---------- 점수: 정원 찬 분반, 주말 수업, 선수과목 ----------
+
+
+def _course(**update):
+    base = Course(
+        year=2026, semester="2학기", category="전공", course_id="TEST0001-001", course_code="TEST0001",
+        name="테스트", credits=3, meetings=[Meeting(day="월", start="09:00", end="10:30")],
+    )
+    return base.model_copy(update=update)
+
+
+def test_full_and_weekend_sections_are_scored_lower():
+    plain = planner.fit_bonus(_course(), None, None)
+    assert planner.fit_bonus(_course(capacity=60, enrolled=60), None, None) < plain
+    assert planner.fit_bonus(_course(meetings=[Meeting(day="토", start="09:00", end="12:00")]), None, None) < plain - 2
+    assert planner.fit_bonus(_course(capacity=60, enrolled=59), None, None) == plain
+
+
+def test_missing_prerequisite_lowers_score_and_warns_only_when_completed_is_given():
+    algo = _course(name="알고리즘2", course_code="TEST0002", course_id="TEST0002-001")
+    plan = planner._Plan(GenerateTimetableRequest(completed_names=["프로그래밍기초"]), [algo])
+    assert plan.fit.get(algo.course_id, 0) <= -planner.PREREQ_PENALTY
+    assert plan.prereq_missing(algo)
+    done = planner._Plan(GenerateTimetableRequest(completed_names=["알고리즘1"]), [algo])
+    assert not done.prereq_missing(algo)
+    unknown = planner._Plan(GenerateTimetableRequest(), [algo])
+    assert not unknown.prereq_missing(algo)  # 이수 기록이 없으면 판단하지 않는다
+
+
+def test_no_empty_candidate_when_every_day_is_blocked():
+    body = generate(min_credits=3, target_credits=3, max_credits=3, free_days=list("월화수목금토일"))
+    assert body["status"] == "infeasible" and body["candidates"] == []
+    assert body["warnings"]
