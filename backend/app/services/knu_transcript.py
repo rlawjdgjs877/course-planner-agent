@@ -1,13 +1,14 @@
 """학교 '이수성적 조회' 응답에서 이수 과목 목록을 뽑는다.
 
-성적 값은 F, NP 를 걸러 내는 데만 쓰고 결과에는 남기지 않는다.
+성적 값은 이수하지 못한 과목을 걸러 내는 데만 쓰고 결과에는 남기지 않는다.
+성적이 비어 있는 과목(이번 학기 수강 중 등, 아직 성적이 안 나온 과목)도 이수 과목이 아니므로 뺀다.
 재이수, 이수 취소 같은 F/NP 외의 경우는 실제 응답으로 검증하지 않았다.
 """
 
 from app.schemas import ImportedCourse
 
 RESPONSE_MARKER = "searchTotalGradsInqrList"  # 학교 조회 요청 주소에 들어 있는 글자
-EXCLUDED_GRADES = {"F", "NP"}
+EXCLUDED_GRADES = {"F", "NP", "W", "U", "FA"}  # 낙제, 불통과, 수강 철회, 미이수, 출석 미달
 
 
 def _text(value: object) -> str:
@@ -37,8 +38,9 @@ def extract_courses(payload: object) -> tuple[list[ImportedCourse], list[str]]:
     for row in rows:
         if not isinstance(row, dict):
             continue
-        if _text(row.get("gradsGradCd")).upper() in EXCLUDED_GRADES:
-            continue
+        grade = _text(row.get("gradsGradCd")).upper()
+        if not grade or grade in EXCLUDED_GRADES:
+            continue  # 성적이 없으면 아직 듣는 중인 과목이다
         code, name = _text(row.get("sbjetCd")), _text(row.get("sbjetNm"))
         if not code or not name:
             continue

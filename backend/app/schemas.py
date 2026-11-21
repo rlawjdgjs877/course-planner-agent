@@ -328,7 +328,7 @@ class Candidate(BaseModel):
     free_days: list[str]
     gap_minutes: int
     score: float
-    warnings: list[str] = Field(default_factory=list, description="정원 초과, 피할 시간과 겹침 등")
+    warnings: list[str] = Field(default_factory=list, description="피할 시간과 겹침, 선수과목 권장 순서 등")
 
 
 OmitReason = Literal[

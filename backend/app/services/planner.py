@@ -37,7 +37,6 @@ GE_AREAS = {  # 교양 자료 이름 → 영역 이름 (frontend/app/lib/data/so
     "literacy": "첨성인소양",
 }
 MAX_RELAXATIONS = 6  # 대안을 찾을 때 하나씩 풀어 보는 조건 수
-FULL_PENALTY = 4  # 신청 인원이 정원 이상인 분반
 WEEKEND_PENALTY = 6  # 토·일 수업이 있는 분반
 WEEKEND = ("토", "일")
 PREREQ_PENALTY = 3  # 학과 권장 순서상 먼저 들을 과목의 이수 기록이 없는 분반
@@ -103,8 +102,7 @@ def fit_bonus(course: Course, track: str | None, grade: int | None) -> float:
             bonus += 1
         elif level >= grade + 2:
             bonus -= 2
-    if course.capacity and course.enrolled is not None and course.enrolled >= course.capacity:
-        bonus -= FULL_PENALTY  # 정원이 찬 분반은 실제로 넣기 어렵다
+    # 신청 인원·정원은 점수와 경고에 쓰지 않는다 (11/21 팀 결정: 신청 인원은 고려하지 않음).
     if any(meeting.day in WEEKEND for meeting in course.meetings):
         bonus -= WEEKEND_PENALTY  # 주말 수업은 평일 공강 점수(+2)보다 크게 깎아, 꼭 필요할 때만 넣는다
     return bonus
@@ -297,8 +295,6 @@ class _Plan:
         warnings = []
         for course in timetable.courses:
             label = f"{course.name} {course.section or ''}분반".strip()
-            if course.capacity and course.enrolled and course.enrolled > course.capacity:
-                warnings.append(f"{label}은 신청 인원({course.enrolled})이 정원({course.capacity})을 넘었던 분반입니다.")
             if _blocked(course, self.avoid):
                 warnings.append(f"{label}이 피하고 싶은 시간과 겹칩니다.")
             if not course.meetings:

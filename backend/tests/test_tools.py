@@ -250,7 +250,7 @@ def test_real_catalog_follows_the_rules_and_is_fast():
         assert not any(m.day == "월" and m.start < "12:00" for s in candidate.sections for m in s.meetings)
 
 
-# ---------- 점수: 정원 찬 분반, 주말 수업, 선수과목 ----------
+# ---------- 점수: 주말 수업, 선수과목 (신청 인원·정원은 보지 않는다) ----------
 
 
 def _course(**update):
@@ -261,9 +261,9 @@ def _course(**update):
     return base.model_copy(update=update)
 
 
-def test_full_and_weekend_sections_are_scored_lower():
+def test_weekend_sections_are_scored_lower_and_capacity_is_ignored():
     plain = planner.fit_bonus(_course(), None, None)
-    assert planner.fit_bonus(_course(capacity=60, enrolled=60), None, None) < plain
+    assert planner.fit_bonus(_course(capacity=60, enrolled=90), None, None) == plain
     assert planner.fit_bonus(_course(meetings=[Meeting(day="토", start="09:00", end="12:00")]), None, None) < plain - 2
     assert planner.fit_bonus(_course(capacity=60, enrolled=59), None, None) == plain
 

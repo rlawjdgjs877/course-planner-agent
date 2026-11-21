@@ -71,7 +71,7 @@ SYSTEM = """너는 경북대학교 컴퓨터학부 학생의 2026학년도 2학�
 화면에는 학생이 고른 조건으로 프로그램이 만든 시간표가 있고, 너는 그 옆 채팅창에서 학생과 이야기한다.
 
 할 수 있는 일
-- 시간표 설명: 왜 이 과목들이 들어갔는지, 주의할 점(정원 초과, 선수과목, 피할 시간과 겹침)은 무엇인지
+- 시간표 설명: 왜 이 과목들이 들어갔는지, 주의할 점(선수과목, 피할 시간과 겹침)은 무엇인지
 - 시간표 고치기: 과목 넣기·빼기·분반 바꾸기, 공강 요일, 피할 시간, 학점 조정 → update_timetable
 - 과목 찾기: 개설 여부, 분반, 시간, 교수, 교양 영역 → search_courses
 - 선수과목 확인 → check_prerequisites
@@ -92,12 +92,13 @@ SYSTEM = """너는 경북대학교 컴퓨터학부 학생의 2026학년도 2학�
 - 한국어, 친근한 존댓말. 3~6문장 또는 짧은 목록. 마크다운 표는 쓰지 않는다.
 - 시간표를 고쳤으면 무엇이 들어가고 빠졌는지, 학점과 공강이 어떻게 됐는지 먼저 말한다."""
 
-SUMMARY_PROMPT = """방금 프로그램이 만든 시간표(지금 시간표)를 학생에게 처음 소개해 줘.
+SUMMARY_PROMPT = """방금 프로그램이 만든 시간표(지금 시간표)를 학생에게 처음 소개하면서, 왜 이렇게 짰는지 이유를 설명해 줘.
 - 첫 문장: 몇 학점, 공강 요일, 전공·교양 구성을 한 문장으로.
-- 이어서 이 시간표의 특징 2~3가지 (학년·트랙에 맞는 전공, 채운 교양 영역, 수업이 몰린 요일 등).
-- 경고가 있으면 가장 중요한 것 1~2개만 (정원 초과, 선수과목 권장 순서, 넣지 못한 필수 과목).
-- 마지막에 이렇게 고칠 수 있다고 예시 하나만 들어 줘.
-도구는 부르지 않는다. 5문장 안팎으로."""
+- 이어서 '이렇게 짠 이유'를 2~4가지. 과목마다 붙은 '고른 이유'와 지금 조건(공강, 피할 시간, 학년, 트랙)을 근거로 든다.
+  예: 꼭 넣을 과목이라서, 내 트랙 전공필수라서, 내 학년 대상이라서, 비워 달라는 요일을 피하려고, 우선 채울 교양 영역이라서.
+- 경고가 있으면 가장 중요한 것 1~2개만 (선수과목 권장 순서, 넣지 못한 필수 과목).
+- 마지막에 이렇게 말하면 바로 고칠 수 있다고 예시 하나만 들어 줘.
+도구는 부르지 않는다. 6문장 안팎으로."""
 
 
 # ---------- 도구 정의 ----------
@@ -125,7 +126,7 @@ TOOLS: list[dict] = [
         "name": "search_courses",
         "description": (
             "2026-2 개설 강좌를 과목 단위로 찾는다. 과목명 일부·과목코드·교수명(query), 교과구분, 요일, 대상 학년으로 거른다. "
-            f"최대 {SEARCH_LIMIT}과목을 돌려주고 과목마다 분반(강좌번호, 시간, 교수, 신청/정원)이 붙는다. "
+            f"최대 {SEARCH_LIMIT}과목을 돌려주고 과목마다 분반(강좌번호, 시간, 교수)이 붙는다. "
             "이미 이수한 과목과 지금 시간표에 있는 과목은 표시해 준다."
         ),
         "strict": True,
@@ -235,17 +236,38 @@ def _norm(text: str) -> str:
 
 
 def _section_brief(course: Course) -> dict:
-    full = bool(course.capacity and course.enrolled is not None and course.enrolled >= course.capacity)
     return {
         "강좌번호": course.course_id,
         "시간": ", ".join(f"{m.day} {m.start}~{m.end}" for m in course.meetings) or "미정",
         "교수": course.professor,
-        "신청/정원": f"{course.enrolled}/{course.capacity}" if course.capacity else None,
-        **({"정원 참": True} if full else {}),
     }
 
 
-def candidate_brief(candidate: Candidate) -> dict:
+def section_reasons(course: Course, request: GenerateTimetableRequest, catalog: list[Course]) -> list[str]:
+    """프로그램이 이 분반을 고른 근거. 요청 조건과 과목 정보로만 판단한다 (지어내지 않는다)."""
+    reasons: list[str] = []
+    if any(_matches_item(item, course.course_id, catalog) for item in request.must_include):
+        reasons.append("꼭 넣을 과목으로 고른 과목")
+    category = course.category or ""
+    track = planner.TRACKS.get(request.track or "")
+    if "전공필수" in category:
+        reasons.append(f"{track + ' ' if track else ''}전공필수")
+    elif "전공" in category:
+        reasons.append(f"{track + ' ' if track else ''}전공")
+    if course.area:
+        preferred = any(area and area in course.area for area in request.ge_areas)
+        reasons.append(f"{'우선 채울 ' if preferred else ''}교양 영역({course.area})")
+    if request.grade and course.grade:
+        if course.grade == str(request.grade):
+            reasons.append(f"{request.grade}학년 대상")
+        elif course.grade == "*":
+            reasons.append("전학년 대상")
+    if course.professor and any(p and p in course.professor for p in request.prefer_professor):
+        reasons.append("선호 교수 수업")
+    return reasons
+
+
+def candidate_brief(candidate: Candidate, request: GenerateTimetableRequest | None = None, catalog: list[Course] | None = None) -> dict:
     return {
         "id": candidate.id,
         "총학점": candidate.total_credits,
@@ -262,6 +284,7 @@ def candidate_brief(candidate: Candidate) -> dict:
                 **({"대상 학년": s.grade} if s.grade else {}),
                 "시간": ", ".join(f"{m.day} {m.start}~{m.end}" for m in s.meetings) or "미정",
                 "교수": s.professor,
+                **({"고른 이유": section_reasons(s, request, catalog or [])} if request is not None else {}),
             }
             for s in candidate.sections
         ],
@@ -495,10 +518,33 @@ def _context(state: _State) -> str:
     return json.dumps(
         {
             "지금 조건": conditions,
-            "지금 시간표": candidate_brief(state.candidate) if state.candidate else "아직 없음",
+            "지금 시간표": candidate_brief(state.candidate, request, state.catalog) if state.candidate else "아직 없음",
         },
         ensure_ascii=False,
     )
+
+
+def fallback_summary(candidate: Candidate, request: GenerateTimetableRequest, catalog: list[Course]) -> str:
+    """AI 를 쓸 수 없을 때 보여 줄 요약. 프로그램이 아는 근거만 문장으로 옮긴다."""
+    majors = sum(v for k, v in candidate.credits_by_category.items() if "전공" in k)
+    lines = [
+        f"{candidate.total_credits:g}학점짜리 시간표예요."
+        + (f" {', '.join(candidate.free_days)}요일은 공강이에요." if candidate.free_days else "")
+        + (f" 전공 {majors:g}학점, 그 밖에 {candidate.total_credits - majors:g}학점이에요." if majors else "")
+    ]
+    reasons = []
+    for s in candidate.sections:
+        why = section_reasons(s, request, catalog)
+        if why:
+            reasons.append(f"{s.name}: {', '.join(why)}")
+    if reasons:
+        lines.append("이렇게 고른 이유예요. " + " / ".join(reasons[:6]))
+    if request.free_days:
+        lines.append(f"반드시 비워 달라고 한 {', '.join(request.free_days)}요일에는 수업을 넣지 않았어요.")
+    if candidate.warnings:
+        lines.append("확인할 점: " + candidate.warnings[0])
+    lines.append("AI 연결이 아직 안 돼서 대화로 고치기는 쓸 수 없어요. backend/.env 에 ANTHROPIC_API_KEY 를 넣으면 \"금요일 비워줘\"처럼 말해서 바로 고칠 수 있어요.")
+    return "\n".join(lines)
 
 
 Ask = Callable[[list[dict]], Any]
@@ -513,6 +559,14 @@ def ask_claude(messages: list[dict]):
         tools=TOOLS,
         messages=messages,
     )
+
+
+def fallback_response(chat: AgentChatRequest, catalog: list[Course]) -> AgentChatResponse | None:
+    candidate = planner.store.get(chat.candidate_id)
+    if candidate is None:
+        return None
+    request = chat.request.model_copy(update={"base_candidate_id": None})
+    return AgentChatResponse(reply=fallback_summary(candidate, request, catalog), applied=False, request=request)
 
 
 def handle(chat: AgentChatRequest, catalog: list[Course], ask: Ask = ask_claude) -> AgentChatResponse:

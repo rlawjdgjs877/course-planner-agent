@@ -27,8 +27,8 @@ with sync_playwright() as p:
  context.route('**/import/knu/*',mock)
  page=context.new_page();page.goto(url,wait_until='networkidle')
  page.get_by_text('수집 항목·이용 목적·보관 안내 보기',exact=True).click();expect(page.get_by_text('동의 거부',exact=True)).to_be_visible();page.get_by_text('수집 항목·이용 목적·보관 안내 보기',exact=True).click()
- school=page.get_by_role('button',name='학교 로그인으로 시작',exact=True);manual=page.get_by_role('button',name='직접 입력하기',exact=True)
- expect(school).to_be_disabled();expect(manual).to_be_enabled();left=school.bounding_box();right=manual.bounding_box();assert abs(left['y']-right['y'])<1 and abs(left['height']-right['height'])<1
+ school=page.get_by_role('button',name='학교 로그인으로 시작',exact=True)
+ expect(school).to_be_disabled();expect(page.get_by_role('button',name='직접 입력하기')).to_have_count(0)  # 홈은 학교 로그인 하나만
  collection=page.get_by_role('checkbox',name=re.compile('이수 과목 정보의 수집·이용'));connection=page.get_by_role('checkbox',name=re.compile('아이디·비밀번호와 조회 내용이 연결 서버에서 일시 처리'))
  collection.check();expect(school).to_be_disabled();assert state['starts']==0
  connection.check();expect(school).to_be_enabled();collection.uncheck();expect(school).to_be_disabled();collection.check();school.click()
@@ -66,7 +66,7 @@ with sync_playwright() as p:
  assert page.evaluate('document.body.style.overflow')!='hidden'
  state['available']=False;page.reload(wait_until='networkidle');page.get_by_role('checkbox',name=re.compile('이수 과목 정보의 수집·이용')).check();page.get_by_role('checkbox',name=re.compile('아이디·비밀번호와 조회 내용이 연결 서버에서 일시 처리')).check();page.get_by_role('button',name='학교 로그인으로 시작',exact=True).click()
  expect(page.get_by_text('미사용 테스트 상태',exact=True)).to_be_visible();expect(page.get_by_role('button',name='불러오기 시작',exact=True)).to_have_count(0)
- page.get_by_role('button',name='학교 로그인 창 닫기',exact=True).click();page.get_by_role('button',name='직접 입력하기',exact=True).click()
+ page.get_by_role('button',name='학교 로그인 창 닫기',exact=True).click();page.get_by_role('button',name=re.compile('이어서 하기')).click()
  expect(page.get_by_role('heading',name='나의 컴학 생활',exact=True)).to_be_visible()
  context.close();browser.close()
-print('PASS: aligned welcome actions, both required privacy consents and refusal fallback, first-screen automatic modal opening without a second click, ID/password login form without a remote screen, no screen capture requests, no token/credential persistence, exact-code application, historical course retention, removal sync, session cleanup on modal close and unavailable-service fallback. No real school account was used.')
+print('PASS: school-login-only home with continue-from-saved, both required privacy consents and refusal fallback, first-screen automatic modal opening without a second click, ID/password login form without a remote screen, no screen capture requests, no token/credential persistence, exact-code application, historical course retention, removal sync, session cleanup on modal close and unavailable-service fallback. No real school account was used.')

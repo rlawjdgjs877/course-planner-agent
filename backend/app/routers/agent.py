@@ -20,6 +20,11 @@ def agent_chat(request: AgentChatRequest) -> AgentChatResponse:
     try:
         return planner_agent.handle(request, load_courses())
     except ChatUnavailable as error:
+        if request.mode == "summary":
+            # AI 키가 없어도 시간표를 만든 이유는 보여 준다 (프로그램이 아는 근거만).
+            response = planner_agent.fallback_response(request, load_courses())
+            if response is not None:
+                return response
         raise HTTPException(status_code=503, detail=str(error)) from error
     except Exception as error:  # Claude 호출 실패 (키 오류, 한도 초과, 네트워크 등)
         logger.exception("agent chat failed")

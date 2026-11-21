@@ -26,6 +26,9 @@ def test_extract_courses_drops_f_and_np_and_keeps_only_four_fields():
             {"sbjetCd": "COMP0202", "sbjetNm": "이산수학", "crdit": 3, "sbjetSctnm": "전공기반", "gradsGradCd": "F"},
             {"sbjetCd": "CLTR0001", "sbjetNm": "봉사활동", "crdit": 1, "sbjetSctnm": "교양", "gradsGradCd": "NP"},
             {"sbjetCd": "CLTR0002", "sbjetNm": "글쓰기", "crdit": "2.0", "sbjetSctnm": "교양", "gradsGradCd": "P"},
+            {"sbjetCd": "COMP0312", "sbjetNm": "운영체제", "crdit": 3, "sbjetSctnm": "전공필수", "gradsGradCd": ""},
+            {"sbjetCd": "COMP0313", "sbjetNm": "컴퓨터구조", "crdit": 3, "sbjetSctnm": "전공필수"},
+            {"sbjetCd": "COMP0314", "sbjetNm": "데이터베이스", "crdit": 3, "sbjetSctnm": "전공필수", "gradsGradCd": "W"},
         ]
     }
     courses, duplicates = extract_courses(payload)
@@ -43,7 +46,7 @@ def test_extract_courses_reports_repeated_codes_and_skips_broken_rows():
             {"sbjetCd": "COMP0201", "sbjetNm": "자료구조", "crdit": 3, "gradsGradCd": "A0"},
             {"sbjetCd": "", "sbjetNm": "이름만", "crdit": 3},
             "not a row",
-            {"sbjetCd": "COMP0300", "sbjetNm": "운영체제", "crdit": "?", "sbjetSctnm": ""},
+            {"sbjetCd": "COMP0300", "sbjetNm": "운영체제", "crdit": "?", "sbjetSctnm": "", "gradsGradCd": "B0"},
         ]
     }
     courses, duplicates = extract_courses(payload)

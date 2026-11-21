@@ -188,3 +188,29 @@ def test_backend_and_frontend_prerequisite_data_match():
     backend = json.loads((root / "backend/app/data/prerequisites.json").read_text(encoding="utf-8"))
     frontend = json.loads((root / "frontend/app/lib/data/prerequisites.json").read_text(encoding="utf-8"))
     assert backend == frontend
+
+
+def test_summary_explains_why_each_course_was_chosen(courses):
+    request = GenerateTimetableRequest(min_credits=6, target_credits=9, max_credits=12, track="advanced", grade=2)
+    candidate = planner.generate(request, courses).candidates[0]
+    must = candidate.sections[0].course_code
+    request = request.model_copy(update={"must_include": [must]})
+    ask = scripted(turn(text("이유를 설명했어요.")))
+    handle(AgentChatRequest(mode="summary", request=request, candidate_id=candidate.id), courses, ask)
+    prompt = ask.seen[0][-1]["content"]
+    assert "고른 이유" in prompt and "꼭 넣을 과목으로 고른 과목" in prompt and "왜 이렇게 짰는지" in prompt
+
+
+def test_summary_without_api_key_still_explains_the_timetable(courses, base, first, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    monkeypatch.setattr(claude_module, "load_dotenv", lambda: None)
+    client = TestClient(app)
+    body = {"mode": "summary", "request": base.model_dump(), "candidate_id": first.id}
+    response = client.post("/agent/chat", json=body)
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert f"{first.total_credits:g}학점" in data["reply"] and data["applied"] is False
+    # 대화로 고치기는 키가 있어야 한다
+    chat = client.post("/agent/chat", json={**body, "mode": "chat", "message": "금요일 비워줘"})
+    assert chat.status_code == 503 and "ANTHROPIC_API_KEY" in chat.json()["detail"]

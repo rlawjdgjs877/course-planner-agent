@@ -11,11 +11,10 @@ import { PlanningSettings } from "./planning-settings";
 import { defaultPlanning, restorePlanning, type PlanningConstraints } from "../lib/planning";
 import { StudentProfileCard } from "./student-profile-card";
 import { courseMatchesSource, courseMatchesYear, courseGradeLabel, courseSources } from "../lib/offerings";
-import { AcademicLinkEntry } from "./academic-link-entry";
 import { SchoolImportDialog } from "./school-import-dialog";
 import { emptySchoolPrivacyConsent, hasSchoolPrivacyConsent } from "../lib/school-privacy";
 import { ImportedCourseSummary } from "./imported-course-summary";
-import { normalizeImportedCourses, mergeImportedCourses, importedCatalogIds, type ImportedCourse } from "../lib/imported-courses";
+import { normalizeImportedCourses, importedCatalogIds, type ImportedCourse } from "../lib/imported-courses";
 import { AcademicInputChoice, type AcademicInputMethod } from "./academic-input-choice";
 import { normalizeAcademicLink } from "../lib/academic-link";
 import { emptyStudentProfile, restoreStudentProfile, type StudentProfile } from "../lib/student-profile";
@@ -84,9 +83,10 @@ export default function FinderApp() {
     setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
   const applyImported = (incoming: ImportedCourse[]) => {
+    // 학교에서 불러온 내역으로 덮어쓴다. 예전에 저장된 체크와 합치면, 듣지 않은 과목의 옛 체크가 남는다.
     const clean = normalizeImportedCourses(incoming);
-    setImportedCourses(previous => mergeImportedCourses(previous, clean));
-    setSelected(previous => [...new Set([...previous, ...importedCatalogIds(clean, courses)])]);
+    setImportedCourses(clean);
+    setSelected(importedCatalogIds(clean, courses));
   };
   const removeImported = (code: string) => {
     setImportedCourses(previous => previous.filter(course => course.code !== code));
@@ -181,16 +181,16 @@ export default function FinderApp() {
         <nav aria-label="주 메뉴">{sections.map((item, i) => <button key={item.title} disabled={showChoice} onClick={() => navigate(i)} className={`nav-item ${!showChoice && section === i ? "active" : ""}`} aria-current={!showChoice && section === i ? "page" : undefined}><Icon name={item.icon} /><span>{item.title}</span>{i === 0 && <small>{selected.length}</small>}</button>)}</nav>
         {!showChoice && <><div className="sidebar-label academic-label">학년별 과목</div>
         <nav aria-label="학년 선택">{folders.map(n => <button key={n} className={`nav-item year-nav ${section === 0 && year === n ? "year-active" : ""}`} onClick={() => { setSection(0); setYear(n); setQuery(""); }}><span className="mini-folder">▰</span>{n === 0 ? "공통·학년 미지정" : `${n}학년`}<span className="nav-count">{courses.filter(c => courseMatchesSource(c, sourceFilter) && courseMatchesYear(c, n, sourceFilter)).length}</span></button>)}</nav></>}
-        <details className="sidebar-help"><summary><Icon name="info" size={18} />사용 가이드</summary><p>학교 로그인으로 이수 과목을 불러오거나 직접 입력으로 시작하세요. 학교 불러오기는 서버에서 이 기능을 켜야 사용할 수 있습니다. 저장한 정보는 입력 방법을 바꿔도 유지됩니다.</p></details>
+        <details className="sidebar-help"><summary><Icon name="info" size={18} />사용 가이드</summary><p>학교 로그인으로 이수 과목을 불러온 뒤, 이수 과목 체크 → 시간표 조건 설정 → 나의 시간표 순서로 진행하세요. 나의 시간표에서는 챗봇에게 말해 시간표를 바로 고칠 수 있어요.</p></details>
         <div className="sidebar-bottom"><span className="avatar">S</span><div>나의 워크스페이스<small>차근차근, 나만의 속도로</small></div><span className="online-dot" /></div>
       </aside>
       <div className="window-main">
         <header className="toolbar"><div className="toolbar-location"><button className="icon-button back" aria-label="이전 화면" disabled={showChoice} onClick={() => { if (year !== null) setYear(null); else if (section > 0) navigate(section - 1); else setShowChoice(true); }}><Icon name="arrow" /></button>{showChoice && <Icon name="calendar" size={25} />}<span>{showChoice ? "Plann" : sections[section].title}</span></div><div className="toolbar-tools">{showChoice && <div className="welcome-toolbar"><span aria-hidden="true"><Icon name="grid" size={21} /></span><label className="welcome-search"><Icon name="search" size={18} /><input disabled aria-label="과목 검색은 학적 입력 화면에서 이용할 수 있어요" placeholder="검색" /></label></div>}{!showChoice && section === 0 && <><div className="view-switch"><button aria-label="아이콘 보기" aria-pressed={view === "grid"} className={view === "grid" ? "chosen" : ""} onClick={() => setView("grid")}><Icon name="grid" size={17} /></button><button aria-label="목록 보기" aria-pressed={view === "list"} className={view === "list" ? "chosen" : ""} onClick={() => setView("list")}><Icon name="list" size={18} /></button></div><label className="search"><Icon name="search" size={16} /><input aria-label="과목 검색" placeholder="과목 검색" value={query} onChange={e => setQuery(e.target.value)} /></label></>}</div></header>
         <main className={`content ${showChoice ? "onboarding-content" : ""}`}>
-          <div className="breadcrumb"><Icon name="book" size={14} /><span>나의 워크스페이스</span><Icon name="arrow" size={11} /><span>{showChoice ? "학적 정보 입력 방법" : sections[section].title}</span>{!showChoice && year !== null && section === 0 && <><Icon name="arrow" size={11} /><span>{year === 0 ? "공통·학년 미지정" : `${year}학년`}</span></>}</div>
-          {showChoice ? <AcademicInputChoice onSchoolLogin={openSchoolDialog} onManual={() => startWith("manual")} disabled={!ready} consent={schoolConsent} onConsentChange={setSchoolConsent} /> : <>
+          <div className="breadcrumb"><Icon name="book" size={14} /><span>나의 워크스페이스</span><Icon name="arrow" size={11} /><span>{showChoice ? "시작하기" : sections[section].title}</span>{!showChoice && year !== null && section === 0 && <><Icon name="arrow" size={11} /><span>{year === 0 ? "공통·학년 미지정" : `${year}학년`}</span></>}</div>
+          {showChoice ? <AcademicInputChoice onSchoolLogin={openSchoolDialog} onContinue={() => startWith(inputMethod ?? "school")} savedCount={Math.max(completedRecords.length, importedCourses.length)} disabled={!ready} consent={schoolConsent} onConsentChange={setSchoolConsent} /> : <>
           <div className="page-heading"><div><div className="step-label">STEP 0{section + 1} <span>/ 나만의 시간표 만들기</span></div><h1>{section === 0 ? "배운 만큼, 체크해 보세요." : section === 1 ? "나의 한 주를 그려 보세요." : "이번 학기, 이렇게 시작해요."}</h1><p>{section === 0 ? "경북대학교 컴퓨터학부 문서의 과목을 체크하고 졸업요건을 확인하세요." : section === 1 ? "원하는 학점과 공강 요일로 나에게 맞는 일주일을 준비해요." : "문서의 미이수 과목과 저장한 희망 조건을 확인하세요."}</p></div><span className="heading-icon"><Icon name={sections[section].icon} size={27} /></span></div>
-          {section === 0 && <><div className="chosen-input-method"><span>입력 방법: <strong>{inputMethod === "school" ? "학교 로그인으로 불러오기" : inputMethod === "link" ? "학적 링크 입력" : "직접 입력"}</strong></span><button type="button" onClick={() => { setShowChoice(true); window.scrollTo({ top: 0, behavior: "auto" }); }}>입력 방법 바꾸기</button></div>{inputMethod === "school" ? <><div className="cohort-note"><strong>학교에서 확인한 이수 내역을 아래에서 확인하세요.</strong><p>새로 불러오려면 학교 로그인 창을 다시 열 수 있습니다.</p><button className="primary-button" onClick={openSchoolDialog}>학교 로그인 창 다시 열기</button></div><details className="manual-profile"><summary>학년·전공 등 추가 학생 정보 확인</summary><StudentProfileCard profile={student} onChange={setStudent} /></details></> : inputMethod === "link" ? <AcademicLinkEntry savedLink={academicLink} onSave={setAcademicLink} /> : <StudentProfileCard profile={student} onChange={setStudent} />}</>}
+          {section === 0 && <><div className="cohort-note"><strong>학교에서 불러온 이수 내역을 아래에서 확인하세요.</strong><p>새로 불러오려면 학교 로그인 창을 다시 열 수 있습니다. 학년과 전공을 고르면 시간표에 반영돼요.</p><button className="primary-button" onClick={openSchoolDialog}>학교 로그인 창 다시 열기</button></div><StudentProfileCard profile={student} onChange={setStudent} /></>}
           {section === 0 ? <>
             <ImportedCourseSummary courses={importedCourses} matchedCodes={catalogCodes} onRemove={removeImported} />
             <div className="progress-card"><span className="progress-symbol"><Icon name="check" size={21} /></span><div className="progress-copy"><strong>전공·교양 과목, 차근차근 정리해요</strong><span>PDF와 JSON에 수록된 과목입니다. 분반은 한 과목으로 묶으며 졸업 충족률을 뜻하지 않습니다.</span></div><div className="progress-number"><strong>{selected.length}<span> / {courses.length}</span></strong><small>이수 과목</small></div><div className="progress-track"><div style={{ width: `${selected.length / courses.length * 100}%` }} /></div></div>
@@ -202,8 +202,8 @@ export default function FinderApp() {
           </> : section === 1 ? <PlanningSettings value={planning} onChange={setPlanning} onGenerate={generate} generating={generating} generateError={generateError} studentReady={requestBody.track !== null && requestBody.grade !== null} /> : <SchedulePreview selected={selected} planning={planning} plannedIds={plannedIds} onPlanToggle={togglePlanned} result={result?.response ?? null} resultRun={result?.run ?? 0} resultStale={!!result && result.requestKey !== requestKey} onRegenerate={generate} generating={generating} generateError={generateError} onCurrentChange={setViewingId} chat={chatProps} />}
           </>}
         </main>
-        {!showChoice && <footer className="content-footer"><span><i className="saved-dot" />{saveState}</span>{section < 2 ? <button className="primary-button" onClick={() => navigate(section + 1)}>{section === 0 ? "시간표 조건 설정" : "담은 시간표 확인"}<Icon name="arrow" size={15} /></button> : <button className="primary-button" onClick={() => navigate(1)}>조건 다시 설정<Icon name="sliders" size={16} /></button>}</footer>}
-        <div className="status-bar"><span>{showChoice ? "Plann · 시작하기" : section === 0 ? `5개 폴더 · 수록 ${courses.length}개 과목` : "나의 학업 워크스페이스"}</span><span>{showChoice ? "학적 정보 입력 방법 선택" : <>{completedRecords.length}개 체크 · 확인된 {knownCredits}학점{unknownCredits > 0 && ` + 학점 미확인 ${unknownCredits}개`}</>}</span></div>
+        {!showChoice && <footer className="content-footer"><span><i className="saved-dot" />{saveState}</span>{section === 0 ? <button className="primary-button" onClick={() => navigate(1)}>시간표 조건 설정<Icon name="arrow" size={15} /></button> : section === 1 ? <button className="primary-button" disabled={generating} onClick={() => { if (result && result.requestKey === requestKey) navigate(2); else void generate(); }}>{generating ? "시간표 만드는 중…" : "시간표 만들고 보기"}<Icon name="arrow" size={15} /></button> : <button className="primary-button" onClick={() => navigate(1)}>조건 다시 설정<Icon name="sliders" size={16} /></button>}</footer>}
+        <div className="status-bar"><span>{showChoice ? "Plann · 시작하기" : section === 0 ? `5개 폴더 · 수록 ${courses.length}개 과목` : "나의 학업 워크스페이스"}</span><span>{showChoice ? "학교 로그인으로 시작" : <>{completedRecords.length}개 체크 · 확인된 {knownCredits}학점{unknownCredits > 0 && ` + 학점 미확인 ${unknownCredits}개`}</>}</span></div>
       </div>
     </div>
     {schoolDialogOpen && <SchoolImportDialog onClose={closeSchoolDialog} onApply={incoming => { applyImported(incoming); setSchoolDialogOpen(false); startWith("school"); }} />}

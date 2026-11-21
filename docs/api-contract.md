@@ -89,7 +89,7 @@ python -m scripts.import_data offerings ../frontend/data/course-sources
 
 자동 추천에서는 상주캠퍼스 강좌, 교직 과목, 시간 미정 강좌를 뺍니다. `must_include`로 직접 넣으면 넣습니다.
 
-점수에서 깎는 것 (넣을 수는 있지만 덜 고름): 신청 인원이 정원 이상인 분반, 토·일 수업, 학과 권장 순서상 먼저 들을 과목의 이수 기록이 없는 과목(이수 과목을 하나라도 보냈을 때만). 선수과목은 후보 `warnings`에 "먼저 들으면 좋은 …"으로 알립니다.
+신청 인원·정원은 점수와 경고에 쓰지 않습니다. 점수에서 깎는 것 (넣을 수는 있지만 덜 고름): 토·일 수업, 학과 권장 순서상 먼저 들을 과목의 이수 기록이 없는 과목(이수 과목을 하나라도 보냈을 때만). 선수과목은 후보 `warnings`에 "먼저 들으면 좋은 …"으로 알립니다.
 
 ### 응답
 
@@ -106,7 +106,7 @@ python -m scripts.import_data offerings ../frontend/data/course-sources
       "free_days": ["월", "수", "금"],
       "gap_minutes": 300,
       "score": 10.0,
-      "warnings": ["자료구조 002분반은 신청 인원(72)이 정원(60)을 넘었던 분반입니다."]
+      "warnings": ["알고리즘2: 먼저 들으면 좋은 알고리즘1의 이수 기록이 없습니다 (학과 권장 순서)."]
     }
   ],
   "applied": {"min_credits": 6, "target_credits": 9, "max_credits": 12, "credits_strict": false,
