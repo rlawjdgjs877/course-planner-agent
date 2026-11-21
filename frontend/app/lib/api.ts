@@ -60,3 +60,11 @@ export function generateTimetable(body: GenerateTimetableRequest, signal?: Abort
 export function fetchCandidate(id: string, signal?: AbortSignal) {
   return request<Candidate>(`/tools/candidates/${encodeURIComponent(id)}`, { signal });
 }
+
+export type ChatTurn = { role: "user" | "assistant"; content: string };
+export type PlanChatResponse = { reply: string; applied: boolean; request: GenerateTimetableRequest; response: GenerateTimetableResponse | null };
+
+/** 나의 시간표 챗봇. message 가 없으면 지금 후보를 설명만 하고, 있으면 말대로 고친 시간표를 돌려준다. */
+export function chatTimetable(body: { message: string | null; request: GenerateTimetableRequest; candidate_id: string | null; history: ChatTurn[] }, signal?: AbortSignal) {
+  return request<PlanChatResponse>("/tools/chat", { method: "POST", body: JSON.stringify(body), signal });
+}

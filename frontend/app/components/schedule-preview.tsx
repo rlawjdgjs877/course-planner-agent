@@ -5,14 +5,16 @@ import { courseOfferings } from "../lib/offerings";
 import { checkSectionConflicts, formatMinutes, validatePlanning, parseMeetingTimes, type PlanningConstraints } from "../lib/planning";
 import { Icon } from "./icons";
 import { TimetableResults } from "./timetable-results";
-import type { GenerateTimetableResponse } from "../lib/api";
+import type { GenerateTimetableRequest, GenerateTimetableResponse, PlanChatResponse } from "../lib/api";
+import { TimetableChat } from "./timetable-chat";
 
 type Props = {
   selected: string[]; planning: PlanningConstraints; plannedIds: string[]; onPlanToggle: (id: string) => void;
   result: GenerateTimetableResponse | null; resultRun: number; resultStale: boolean; onRegenerate: () => void; generating: boolean; generateError: string | null;
+  chatRequest: GenerateTimetableRequest; onChatApply: (answer: PlanChatResponse) => number;
 };
 
-export function SchedulePreview({ selected, planning, plannedIds, onPlanToggle, result, resultRun, resultStale, onRegenerate, generating, generateError }: Props) {
+export function SchedulePreview({ selected, planning, plannedIds, onPlanToggle, result, resultRun, resultStale, onRegenerate, generating, generateError, chatRequest, onChatApply }: Props) {
   const completed = courses.filter(c => selected.includes(c.id));
   const completedNames = completed.map(c => c.name);
   const resolved = plannedIds.map(id => ({ id, offering: courseOfferings.find(o => o.records[0].crseNo === id) }));
@@ -35,7 +37,7 @@ export function SchedulePreview({ selected, planning, plannedIds, onPlanToggle, 
   const hasProblems = !report.ok || missing.length > 0;
   return <section className="schedule-preview">
     <div className="section-heading"><h2>자동 생성 시간표<span>2026년 2학기 개설 강좌</span></h2></div>
-    {result ? <TimetableResults key={resultRun} result={result} stale={resultStale} onRegenerate={onRegenerate} generating={generating} generateError={generateError} /> : <div className="cohort-note generate-empty"><div><strong>아직 만든 시간표가 없어요.</strong><p>시간표 조건 설정에서 ‘시간표 만들기’를 누르거나, 지금 조건으로 바로 만들어 보세요.</p></div><button className="primary-button" disabled={generating || preferenceErrors.length > 0} onClick={onRegenerate}>{generating ? <><span className="button-spinner" aria-hidden="true" />만드는 중…</> : "지금 조건으로 만들기"}</button>{generateError && <div className="planning-errors" role="alert"><p>{generateError}</p></div>}</div>}
+    {result ? <><TimetableResults key={resultRun} result={result} stale={resultStale} onRegenerate={onRegenerate} generating={generating} generateError={generateError} /><TimetableChat request={chatRequest} candidateId={result.candidates[0]?.id ?? null} run={resultRun} onApply={onChatApply} /></> : <div className="cohort-note generate-empty"><div><strong>아직 만든 시간표가 없어요.</strong><p>시간표 조건 설정에서 ‘시간표 만들기’를 누르거나, 지금 조건으로 바로 만들어 보세요.</p></div><button className="primary-button" disabled={generating || preferenceErrors.length > 0} onClick={onRegenerate}>{generating ? <><span className="button-spinner" aria-hidden="true" />만드는 중…</> : "지금 조건으로 만들기"}</button>{generateError && <div className="planning-errors" role="alert"><p>{generateError}</p></div>}</div>}
     <div className="section-heading manual-heading"><h2>직접 담은 분반<span>개설 강좌에서 골라 담기</span></h2></div>
     <div className="scope-banner"><Icon name="calendar" size={18} /><div><strong>직접 담은 분반 확인 · 2026년 2학기</strong><p>시간과 분반 중복은 실제 개설 자료로 검사합니다. 직접 담은 분반은 자동 조합 탐색을 하지 않으며, 선수과목·교육과정 요건은 아직 검사하지 않습니다.</p></div></div><div className="schedule-summary"><span className="badge">직접 구성</span><span>{records.length}개 분반 · 확인된 {credits}학점{creditsUnknown ? " + 학점 확인 필요" : ""}</span><span>목표 {planning.target_credits}학점</span></div>
     {!plannedIds.length ? <div className="cohort-note"><strong>아래 강좌 목록에서 ‘시간표에 담기’를 눌러 보세요.</strong><p>같은 과목의 여러 분반을 담으면 중복을 안내하고, 시간이 없는 강좌는 판정 보류로 표시합니다.</p></div> : <>

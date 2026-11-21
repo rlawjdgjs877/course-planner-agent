@@ -274,8 +274,6 @@ class _Plan:
         warnings = []
         for course in timetable.courses:
             label = f"{course.name} {course.section or ''}분반".strip()
-            if course.capacity and course.enrolled and course.enrolled > course.capacity:
-                warnings.append(f"{label}은 신청 인원({course.enrolled})이 정원({course.capacity})을 넘었던 분반입니다.")
             if _blocked(course, self.avoid):
                 warnings.append(f"{label}이 피하고 싶은 시간과 겹칩니다.")
             if not course.meetings:
