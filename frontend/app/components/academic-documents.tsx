@@ -6,7 +6,7 @@ import { prerequisiteChains, startupCourses } from "../lib/prerequisites";
 import { Icon } from "./icons";
 import { type StudentProfile } from "../lib/student-profile";
 
-export function AcademicDocuments({ selected, toggle, student, onMajorChange }: { selected: string[]; toggle: (id: string) => void; student: StudentProfile; onMajorChange: (id: string) => void }) {
+export function AcademicDocuments({ selected, toggle, student, onMajorChange, importedNames = [] }: { selected: string[]; toggle: (id: string) => void; student: StudentProfile; onMajorChange: (id: string) => void; importedNames?: string[] }) {
   const [tab, setTab] = useState("graduation");
   const profileId = student.majorId;
   const setProfileId = onMajorChange;
@@ -19,7 +19,9 @@ export function AcademicDocuments({ selected, toggle, student, onMajorChange }: 
   const global = globalCohorts.find(c => c.id === cohortId);
   const track = globalTracks.find(t => t.id === trackId);
   const categories = ["전체", ...new Set(prerequisiteChains.map(c => c.category))];
-  const checked = (name: string) => courses.some(c => c.name === name && selected.includes(c.id));
+  // 이번 학기에 안 열려도 학교에서 불러온 이수 내역에 같은 과목명이 있으면 이수로 본다.
+  const imported = new Set(importedNames.map(n => n.replace(/\s+/g, "")));
+  const checked = (name: string) => imported.has(name.replace(/\s+/g, "")) || courses.some(c => c.name === name && selected.includes(c.id));
   return <section className="academic-documents" aria-label="첨부 문서 학업 안내">
     <div className="document-heading"><div><span className="step-label">KNU · ACADEMIC GUIDE</span><h2>경북대학교 컴퓨터학부</h2></div><span className="document-badge">첨부 PDF 기준</span></div>
     <div className="document-tabs" role="group" aria-label="학업 안내 선택"><button aria-pressed={tab === "graduation"} onClick={() => setTab("graduation")}><Icon name="book" size={16} />졸업요건</button><button aria-pressed={tab === "prerequisites"} onClick={() => setTab("prerequisites")}><Icon name="list" size={16} />선후수 과목</button></div>
@@ -29,7 +31,7 @@ export function AcademicDocuments({ selected, toggle, student, onMajorChange }: 
       {profile ? <div className="profile-content">{!primary && <div className="cohort-note"><strong>아래 내용은 컴학 주전공 졸업요건 참고자료입니다.</strong><p>컴학 복수·부전공의 별도 이수요건이나 방문 교환학생 수강 기준으로 적용하지 않습니다. 학생 구분은 화면 위에서 설정할 수 있습니다.</p></div>}<div className="profile-summary"><div><h3>{profile.name}</h3><p>{profile.basis}</p></div><div><strong>{profile.id === "platform" && !platform ? "140~150" : platform && profile.id === "platform" ? platform.total : profile.total}</strong><span>{primary ? "문서의 주전공 졸업학점" : "주전공 기준 · 참고용"}</span></div></div>
         {profile.id === "platform" && <><label className="document-field">입학 학번 구간<select value={cohortId} onChange={e => setCohortId(e.target.value)}><option value="">학번 구간 선택</option>{platformCohorts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>{platform ? <div className="cohort-note"><strong>{platform.value}</strong><p>{platform.practice}</p></div> : <p className="document-description">학번을 선택하면 학점 구성과 현장실습 요건이 표시됩니다. 2010학번 이전 기준은 이 자료에 없습니다.</p>}</>}
         {profile.id === "global" && <><div className="document-fields"><label className="document-field">입학 학년도 구간<select value={cohortId} onChange={e => setCohortId(e.target.value)}><option value="">학년도 구간 선택</option>{globalCohorts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label className="document-field">이수 트랙<select value={trackId} onChange={e => setTrackId(e.target.value)}><option value="">트랙 선택</option>{globalTracks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label></div>{global && <div className="cohort-note">{global.value}</div>}{track && <div className="cohort-note"><strong>{track.name}</strong><p>{track.value}</p></div>}</>}
-        {profile.required.length > 0 && <div className="required-courses"><h4>{primary ? "문서에 명시된 전공필수" : "주전공 전공필수 · 참고용"} <span>{profile.required.filter(checked).length} / {profile.required.length}개 체크</span></h4><div>{profile.required.map(name => { const course = courses.find(c => c.name === name); return <label key={name}><input type="checkbox" checked={checked(name)} disabled={!course} onChange={() => course && toggle(course.id)} /><span>{name}</span></label>; })}</div><p>같은 과목명의 이수 체크만 반영합니다. 대체 과목 인정과 최종 졸업 충족 여부는 별도 확인이 필요합니다.</p></div>}
+        {profile.required.length > 0 && <div className="required-courses"><h4>{primary ? "문서에 명시된 전공필수" : "주전공 전공필수 · 참고용"} <span>{profile.required.filter(checked).length} / {profile.required.length}개 체크</span></h4><div>{profile.required.map(name => { const course = courses.find(c => c.name === name); return <label key={name}><input type="checkbox" checked={checked(name)} disabled={!course} onChange={() => course && toggle(course.id)} /><span>{name}</span></label>; })}</div><p>이수 체크와 학교에서 불러온 내역 중 같은 과목명을 반영합니다. 대체 과목 인정과 최종 졸업 충족 여부는 별도 확인이 필요합니다.</p></div>}
         <dl className="requirements-table">{profile.rows.map(row => <div key={row.label}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}</dl>
         <details className="document-notes"><summary>대체 인정 및 세부 유의사항</summary><ul>{profile.notes.map(note => <li key={note}>{note}</li>)}</ul></details>
         <div className="source-links"><a href={`/documents/graduation-requirements.pdf#page=${profile.sourcePage}`} target="_blank" rel="noreferrer">졸업요건 PDF · {profile.sourcePage}쪽 ↗</a><a href={profile.sourceUrl} target="_blank" rel="noreferrer">PDF에 기재된 학부 안내 ↗</a></div>

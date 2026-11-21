@@ -40,8 +40,8 @@ export default function FinderApp() {
   const [planning, setPlanning] = useState<PlanningConstraints>(defaultPlanning);
   const [plannedIds, setPlannedIds] = useState<string[]>([]);
   const [ready, setReady] = useState(false);
-  const [saveState, setSaveState] = useState("이 브라우저에 자동 저장됩니다");
-  // 시간표 후보는 서버 메모리에만 있으므로 localStorage 에 저장하지 않는다.
+  const [saveState, setSaveState] = useState("이 탭을 닫으면 처음부터 다시 시작해요");
+  // 시간표 후보는 서버 메모리에만 있으므로 저장하지 않는다.
   const [result, setResult] = useState<{ response: GenerateTimetableResponse; requestKey: string; run: number } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
@@ -50,7 +50,9 @@ export default function FinderApp() {
   useEffect(() => {
     const restoreTimer = window.setTimeout(() => {
     try {
-      const stored = JSON.parse(localStorage.getItem("campus-finder-knu-documents-v2") || "null");
+      // 사이트를 새로 열면 처음부터 시작한다. 새로고침에는 남도록 탭 단위(sessionStorage)로 저장한다.
+      localStorage.removeItem("campus-finder-knu-documents-v2"); // 예전 버전이 남긴 저장값
+      const stored = JSON.parse(sessionStorage.getItem("campus-finder-knu-documents-v2") || "null");
       if (stored) {
         if (stored.inputMethod === "link" || stored.inputMethod === "manual" || stored.inputMethod === "school") setInputMethod(stored.inputMethod);
         setStudent(restoreStudentProfile(stored.student));
@@ -70,7 +72,7 @@ export default function FinderApp() {
   }, []);
   useEffect(() => {
     if (!ready) return;
-    try { localStorage.setItem("campus-finder-knu-documents-v2", JSON.stringify({ selected, planning, plannedIds, student, academicLink, inputMethod, importedCourses })); }
+    try { sessionStorage.setItem("campus-finder-knu-documents-v2", JSON.stringify({ selected, planning, plannedIds, student, academicLink, inputMethod, importedCourses })); }
     catch { queueMicrotask(() => setSaveState("브라우저 저장이 제한되어 현재 화면에서만 유지됩니다")); }
   }, [selected, planning, plannedIds, student, academicLink, inputMethod, importedCourses, ready]);
   const toggle = (id: string) => {
@@ -157,7 +159,7 @@ export default function FinderApp() {
             <div className="section-heading"><h2>{query ? "검색 결과" : year !== null ? (year === 0 ? "공통·학년 미지정" : `${year}학년 과목`) : "과목 폴더"}<span>{query || year !== null ? `${filtered.length}개 과목` : "5개 폴더"}</span></h2><span>{year !== null || query ? "체크하여 이수 과목 선택" : "폴더를 클릭해 과목을 확인하세요"}</span></div>
             {year === null && !query ? <div className={`folder-grid ${view === "list" ? "folder-list" : ""}`}>{folders.map(n => { const count = completed.filter(c => courseMatchesSource(c, sourceFilter) && courseMatchesYear(c, n, sourceFilter)).length; return <button className="folder-card" key={n} onClick={() => setYear(n)}><Folder /><strong>{n === 0 ? "공통·학년 미지정" : `${n}학년`}</strong><span>{courses.filter(c => courseMatchesSource(c, sourceFilter) && courseMatchesYear(c, n, sourceFilter)).length}개 과목 <b>·</b> {n === 0 ? "전학년·미확인" : "2026년 2학기"}</span><small className={count ? "has-completed" : ""}>{count ? `${count}개 이수 완료` : "이수 과목 선택하기"}</small></button>; })}</div> : <div className="course-list">{filtered.length ? <><div className="course-table-heading"><span>과목명</span><span>구분 · 학점</span></div>{filtered.map(c => <label className={`course-row ${selected.includes(c.id) ? "checked" : ""}`} key={c.id}><input type="checkbox" checked={selected.includes(c.id)} onChange={() => toggle(c.id)} /><span className="course-file"><Icon name="book" size={18} /></span><span className="course-name"><strong>{c.name}</strong><small>{courseGradeLabel(c, sourceFilter)} · {c.semester}{c.code && ` · ${c.code}`}</small></span><span className="course-category">{c.category}</span><span className="course-credit">{c.credits === null ? "학점 미기재" : `${c.credits}학점`}</span></label>)}</> : <div className="empty-state"><Icon name="search" size={30} /><p>표시할 과목이 없어요. 조건을 바꾸거나 공통·학년 미지정 폴더를 확인해 주세요.</p><button onClick={() => setQuery("")}>검색어 지우기</button></div>}</div>}
             <div className="tip"><Icon name="info" size={17} /><div><strong>이수 과목부터 정리하면 더 쉬워요.</strong><p>2026년 2학기 수강신청 전 기준으로 이전 학기까지 완료한 과목만 체크해 주세요. 2026-2 수강 중인 과목은 체크하지 않습니다. 전공·교양을 선택하면 해당 자료의 학년을 기준으로 폴더가 나뉩니다. 전공마다 학년이 다른 과목은 여러 폴더에 보이지만 한 번만 이수 처리됩니다. 개설 학점은 이번 학기 조회값이며 과거 학점 인정은 별도 확인이 필요합니다.</p></div></div>
-            <AcademicDocuments key={student.majorId} selected={selected} toggle={toggle} student={student} onMajorChange={majorId => setStudent(prev => ({ ...prev, majorId }))} />
+            <AcademicDocuments key={student.majorId} selected={selected} toggle={toggle} student={student} importedNames={importedCourses.map(course => course.name)} onMajorChange={majorId => setStudent(prev => ({ ...prev, majorId }))} />
           </> : section === 1 ? <PlanningSettings value={planning} onChange={setPlanning} onGenerate={generate} generating={generating} generateError={generateError} studentReady={requestBody.track !== null && requestBody.grade !== null} /> : <SchedulePreview selected={selected} planning={planning} plannedIds={plannedIds} onPlanToggle={togglePlanned} result={result?.response ?? null} resultRun={result?.run ?? 0} resultStale={!!result && result.requestKey !== requestKey} onRegenerate={generate} generating={generating} generateError={generateError} chatRequest={requestBody} onChatApply={applyChat} />}
           </>}
         </main>

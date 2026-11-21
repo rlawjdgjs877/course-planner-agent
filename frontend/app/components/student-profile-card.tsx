@@ -8,7 +8,7 @@ export function StudentProfileCard({ profile, onChange }: { profile: StudentProf
   const incoming = profile.affiliation === "incoming";
   const showExchange = profile.affiliation && !incoming;
   return <section className="student-profile" aria-labelledby="student-profile-title">
-    <div className="document-heading"><div><span className="step-label">MY ACADEMIC PROFILE</span><h2 id="student-profile-title">나의 컴학 생활</h2></div><span className="document-badge">이 브라우저에 저장</span></div>
+    <div className="document-heading"><div><span className="step-label">MY ACADEMIC PROFILE</span><h2 id="student-profile-title">나의 컴학 생활</h2></div><span className="document-badge">탭을 닫으면 초기화</span></div>
     <p className="document-description">컴퓨터학부생을 위한 학업 공간입니다. 주전공, 진입 경로, 다른 전공과 교환학점 이력을 함께 구분해요.</p>
     <fieldset className="student-affiliations"><legend>컴퓨터학부와의 관계</legend><div>{affiliations.map(item => <label key={item.id} className={profile.affiliation === item.id ? "is-selected" : ""}><input type="radio" name="student-affiliation" value={item.id} checked={profile.affiliation === item.id} onChange={() => onChange(changeAffiliation(profile, item.id))} /><strong>{item.name}</strong><small>{item.description}</small></label>)}</div></fieldset>
     {profile.affiliation && <>
