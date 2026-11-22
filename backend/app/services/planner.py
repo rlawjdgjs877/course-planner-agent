@@ -5,7 +5,10 @@
 
 - 반드시: free_days, blocked_times, must_include, exclude, 최대 학점(학칙 상한 19), credits_strict 면 최소 학점
 - 가능하면: avoid_times, target_credits, ge_areas, prefer_professor, base_candidate_id 의 과목 유지
-- 상주캠퍼스 강좌, 교직 과목, 시간 미정 강좌는 자동 추천에서 뺀다 (학생이 must_include 로 넣으면 넣는다).
+- 상주캠퍼스 강좌, 교직 과목, 시간 미정 강좌, 토·일 수업(allow_weekend 가 아니면), 외국인 대상 교양,
+  다른 단과대 학생용 기초 교양은 자동 추천에서 뺀다 (학생이 must_include 로 넣으면 넣는다).
+- 선수과목(services/prerequisites.py, 권장 이수 순서): 이수 과목을 알려 주면 앞 단계를 듣지 않은 과목은
+  자동 추천에서 빼고, 모르면 감점만 한다. 학생이 직접 넣은 과목은 넣되 prereq_issues 와 경고로 알린다.
 - 만든 후보는 서버 메모리에 잠시 보관한다. 서버를 다시 켜면 사라진다.
 """
 
@@ -20,21 +23,39 @@ from app.schemas import (
     GenerateTimetableRequest,
     GenerateTimetableResponse,
     OmittedCourse,
+    PrereqIssue,
     TimeBlock,
     Timetable,
     TimetableRequest,
     TimetableResult,
 )
+from app.services import prerequisites
 from app.services.timetable import _block_mask, _time_mask, generate_timetables
 
 CREDIT_CAP = 19  # 도구 정의서의 기본 상한. 학칙으로 검증한 개인별 상한은 아니다.
 TRACKS = {"advanced": "심컴", "ai": "인컴", "research": "첨컴", "platform": "플솦", "global": "글솦"}
+# 프론트엔드나 채팅에서 다른 이름으로 올 수 있는 트랙 (소문자·공백 제거 후 비교)
+TRACK_ALIASES = {
+    "deep": "advanced", "심컴": "advanced", "심화컴퓨팅": "advanced", "심화컴퓨팅전공": "advanced",
+    "aicomputing": "ai", "artificialintelligence": "ai", "인컴": "ai", "인공지능컴퓨팅": "ai", "인공지능컴퓨팅전공": "ai",
+    "advancedresearch": "research", "첨컴": "research", "첨단컴퓨팅연구": "research", "첨단컴퓨팅연구전공": "research",
+    "platformsw": "platform", "datascience": "platform", "플솦": "platform",
+    "플랫폼sw·데이터과학전공": "platform", "플랫폼sw데이터과학전공": "platform", "플랫폼sw·데이터과학": "platform",
+    "globalsw": "global", "글솦": "global", "글로벌sw융합": "global", "글로벌sw융합전공": "global",
+}
 GE_AREAS = {  # 교양 자료 이름 → 영역 이름 (frontend/app/lib/data/sources.json 과 같다)
     "foundation": "첨성인기초",
     "core-humanities": "첨성인핵심 · 인문",
     "core-natural": "첨성인핵심 · 자연",
     "literacy": "첨성인소양",
 }
+WEEKEND = ("토", "일")
+# 외국인 유학생 대상 교양: 국제처 개설 교양과 한국어 과목
+FOREIGN_GE = re.compile(r"Korean Language|Practical Korean|Academic Korean|외국인을\s*위한|한국어로\s*보는")
+# 다른 단과대 학생용 기초 교양 (인문사회계열·자연과학대학 전용)
+OTHER_COLLEGE_GE = re.compile(r"^인문사회\s|^자연과학\s*코딩기초")
+# 이공계 기초 교양 중 컴학 자료에 없는 것. 들을 수는 있으니 크게 감점만 한다.
+SCIENCE_BASICS = re.compile(r"^(화학|물리학|생물학|일반생명과학|기초수학|물리학입문|생명과학입문)")
 MAX_RELAXATIONS = 6  # 대안을 찾을 때 하나씩 풀어 보는 조건 수
 
 
@@ -70,6 +91,20 @@ def _normalize(text: str) -> str:
     return re.sub(r"\s+", "", text)
 
 
+def resolve_track(track: str | None) -> str | None:
+    """트랙 id 나 별칭(deep, 심컴, 심화컴퓨팅전공 등)을 TRACKS 의 키로. 모르면 None."""
+    if not track:
+        return None
+    key = _normalize(track).lower()
+    if key in TRACKS:
+        return key
+    return TRACK_ALIASES.get(key)
+
+
+def _computing_listed(course: Course) -> bool:
+    return any(x.source == "computing" or x.source in TRACKS for x in course.listings)
+
+
 def for_track(course: Course, track: str | None) -> Course:
     """같은 분반이 트랙마다 다른 이수구분으로 올라 있으면 학생 트랙 기준으로 고른다."""
     listings = course.listings
@@ -91,23 +126,34 @@ def fit_bonus(course: Course, track: str | None, grade: int | None) -> float:
     bonus = 0.0
     sources = {x.source for x in course.listings}
     if course.category != "교양" and (sources & ({track} if track else set()) or "computing" in sources):
-        bonus += 2
+        bonus += 2 + (course.credits or 0) * 0.5  # 전공 먼저 (3학점 전공 = +3.5)
     if grade and course.grade and course.grade.isdigit():
         level = int(course.grade)
         if level == grade:
             bonus += 1
         elif level >= grade + 2:
             bonus -= 2
+        elif course.category == "교양" and level < grade:
+            bonus -= 0.5  # 아래 학년 대상 교양은 조금 덜 고른다
+    if course.category == "교양" and not _computing_listed(course) and SCIENCE_BASICS.match(course.name):
+        bonus -= 6
     return bonus
 
 
-def not_recommended(course: Course) -> str | None:
+def not_recommended(course: Course, allow_weekend: bool = True) -> str | None:
     if "상주" in (course.building or ""):
         return "상주캠퍼스 강좌"
     if course.category == "교직":
         return "교직 과목"
     if not course.meetings:
         return "수업 시간 미정"
+    if not allow_weekend and any(m.day in WEEKEND for m in course.meetings):
+        return "토·일 수업"
+    if not _computing_listed(course):
+        if course.department == "국제처" or FOREIGN_GE.search(course.name):
+            return "외국인 대상 교양"
+        if OTHER_COLLEGE_GE.search(course.name):
+            return "다른 단과대 학생용 교양"
     return None
 
 
@@ -144,7 +190,7 @@ class _Plan:
             self.warnings.append(f"수강 신청 상한 {CREDIT_CAP}학점에 맞춰 최대 {CREDIT_CAP}학점으로 찾았습니다.")
         self.min_credits = min(request.min_credits, self.max_credits)
         self.target = min(request.target_credits, self.max_credits)
-        self.track = request.track if request.track in TRACKS else None
+        self.track = resolve_track(request.track)
         if request.track and not self.track:
             self.warnings.append(f"알 수 없는 트랙({request.track})이라 컴학 공통 기준으로 이수구분을 정했습니다.")
         self.courses = [for_track(course, self.track) for course in catalog]
@@ -161,6 +207,18 @@ class _Plan:
             )
         self.keep = [section.course_id for section in base.sections] if base else []
         self.base_id = request.base_candidate_id if base else None
+
+        # 선수과목: 이수 과목을 알면 앞 단계 미이수 과목을 자동 추천에서 빼고, 모르면 감점만 한다.
+        self.prereq = prerequisites.Checker(request.completed, self.courses, self.track)
+        self.prereq_known = bool(request.completed)
+        self.prereq_skipped: set[str] = set()
+        self.prereq_flagged = {
+            course.course_code for course in self.courses if self.prereq.issue(course.name) is not None
+        }
+        if not self.prereq_known:
+            for course in self.courses:
+                if course.course_code in self.prereq_flagged:
+                    self.fit[course.course_id] = self.fit.get(course.course_id, 0.0) - 3
 
         self.completed = {c.course_code for item in request.completed for c in _matches(item, self.courses)} | {
             item.strip() for item in request.completed
@@ -217,7 +275,15 @@ class _Plan:
                 continue
             if course.course_code in only and course.course_id not in only[course.course_code]:
                 continue
-            if course.course_code not in musts and not_recommended(course):
+            if course.course_code not in musts and not_recommended(course, self.request.allow_weekend):
+                continue
+            if (
+                self.prereq_known
+                and course.course_code in self.prereq_flagged
+                and course.course_code not in musts
+                and course.course_id not in self.keep
+            ):
+                self.prereq_skipped.add(course.course_code)
                 continue
             result.append(course)
         return result
@@ -278,6 +344,8 @@ class _Plan:
                 warnings.append(f"{label}이 피하고 싶은 시간과 겹칩니다.")
             if not course.meetings:
                 warnings.append(f"{label}은 수업 시간이 정해지지 않았습니다.")
+        issues = prerequisites.issues_for(timetable.courses, [], [], checker=self.prereq)
+        warnings += [prerequisites.describe(issue) for issue in issues]
         result = Candidate(
             id=store.new_id(kind),
             sections=timetable.courses,
@@ -287,6 +355,7 @@ class _Plan:
             gap_minutes=timetable.gap_minutes,
             score=timetable.score,
             warnings=warnings,
+            prereq_issues=[PrereqIssue(**issue) for issue in issues],
         )
         store.save(result)
         return result
@@ -330,6 +399,20 @@ class _Plan:
         warnings = list(self.warnings)
         if below_min and candidates:
             warnings.append(f"최소 {self.min_credits:g}학점을 채우는 시간표가 없어 {candidates[0].total_credits:g}학점으로 만들었습니다.")
+        # 학생이 직접 넣은 과목의 선수과목 경고는 응답 전체 경고에도 한 줄씩 올린다.
+        must_lines: dict[str, None] = {}
+        for candidate in candidates:
+            codes = {section.course_id: section.course_code for section in candidate.sections}
+            for issue in candidate.prereq_issues:
+                if codes.get(issue.course_id) in musts:
+                    must_lines[prerequisites.describe(issue.model_dump())] = None
+        warnings += list(must_lines)
+        if self.prereq_skipped:
+            warnings.append(
+                f"선수과목(권장 이수 순서)의 앞 단계를 이수하지 않은 {len(self.prereq_skipped)}과목은 자동 추천에서 뺐습니다."
+            )
+        elif not self.prereq_known and any(c.prereq_issues for c in candidates):
+            warnings.append("이수 과목 정보가 없어 선수과목은 확인용으로만 표시했습니다. 이수 과목을 알려 주면 더 정확합니다.")
         if result.truncated:
             warnings.append("과목이 많아 일부 조합만 살펴봤습니다. 더 좋은 조합이 있을 수 있습니다.")
         if not candidates:
@@ -354,6 +437,7 @@ class _Plan:
                 "credits_strict": self.request.credits_strict,
                 "track": self.track,
                 "grade": self.request.grade,
+                "allow_weekend": self.request.allow_weekend,
                 "base_candidate_id": self.base_id,
             },
             omitted_required=omitted,

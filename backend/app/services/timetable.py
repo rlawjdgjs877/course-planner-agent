@@ -19,7 +19,8 @@ EXACT_NODES = 5_000  # 이 한도 안에 끝나면 모든 경우를 다 따져 �
 RESTARTS = 80  # 과목이 많으면 일부만 뽑아, 뽑는 과목을 바꿔 가며 여러 번 짧게 탐색한다
 RESTART_NODES = 300
 SAMPLE_CODES = 60  # 한 번 탐색할 때 뽑는 과목 수
-SAMPLE_PER_CATEGORY = 12  # 그중 꼭 채워야 하는 영역마다 넣는 과목 수
+SAMPLE_PER_CATEGORY = 12
+FAVORED_CODES = 25  # 매번 넣는 높은 점수 과목 수  # 그중 꼭 채워야 하는 영역마다 넣는 과목 수
 SLOT_MINUTES = 5
 SLOTS_PER_DAY = 24 * 60 // SLOT_MINUTES
 
@@ -327,6 +328,12 @@ def generate_timetables(courses: list[Course], request: TimetableRequest) -> Tim
         rng = random.Random(0)  # 같은 요청에는 같은 결과가 나오도록 고정
         # 지금 시간표의 과목은 항상 후보에 넣어, 수정 요청 뒤에도 시간표가 크게 바뀌지 않게 한다.
         always = [code for code in optional_codes if any(is_kept[i] for i in by_code[code])]
+        # 점수가 높은 과목(학생 트랙의 전공 등)은 무작위로 빠지지 않게 매번 넣는다. 전공 먼저.
+        favored = sorted(
+            (code for code in optional_codes if max(bonus_of[i] for i in by_code[code]) >= 2.5),
+            key=lambda code: -max(bonus_of[i] for i in by_code[code]),
+        )[:FAVORED_CODES]
+        always += [code for code in favored if code not in always]
         codes_by_category: dict[str, list[str]] = {category: [] for category in needed}
         for code in optional_codes:
             category = category_of[by_code[code][0]]
@@ -344,6 +351,7 @@ def generate_timetables(courses: list[Course], request: TimetableRequest) -> Tim
                 keys,
                 key=lambda code: (
                     not any(is_kept[i] for i in by_code[code]),
+                    code not in favored,
                     all(on_preferred_day[i] for i in by_code[code]),
                     keys[code],
                 ),

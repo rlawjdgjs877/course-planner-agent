@@ -306,6 +306,9 @@ class GenerateTimetableRequest(BaseModel):
     )
     completed: list[str] = Field(default_factory=list, description="이미 이수한 과목코드")
     grade: int | None = Field(default=None, ge=1, le=6, description="학생 학년. 그 학년 과목을 우선한다")
+    allow_weekend: bool = Field(
+        default=False, description="True 면 토·일 수업도 자동 추천한다. False 여도 must_include 로 넣은 과목은 넣는다"
+    )
     max_candidates: int = Field(default=3, ge=1, le=5)
 
     @model_validator(mode="after")
@@ -317,6 +320,17 @@ class GenerateTimetableRequest(BaseModel):
         return self
 
 
+class PrereqIssue(BaseModel):
+    """선수과목(권장 이수 순서) 확인 결과. 자료: prerequisites.pdf"""
+
+    course_id: str = Field(description="강좌번호")
+    name: str = Field(description="과목명")
+    missing: list[str] = Field(description="이수하지 않은(또는 같은 학기에 함께 듣는) 앞 단계 과목. 'A / B' 는 둘 중 하나")
+    chain: str = Field(description="선수과목 안내의 사슬 이름. 예: 공통 · 시스템")
+    page: int = Field(description="prerequisites.pdf 쪽")
+    kind: Literal["missing", "concurrent"] = Field(description="missing: 앞 단계 미이수, concurrent: 같은 학기에 앞 단계를 함께 들음")
+
+
 class Candidate(BaseModel):
     id: str = Field(description="후보 id. tt_001, 대안은 tt_alt_001")
     sections: list[Course] = Field(description="담긴 분반. category 와 area 는 요청의 트랙 기준")
@@ -326,6 +340,7 @@ class Candidate(BaseModel):
     gap_minutes: int
     score: float
     warnings: list[str] = Field(default_factory=list, description="피할 시간과 겹침 등")
+    prereq_issues: list[PrereqIssue] = Field(default_factory=list, description="선수과목 확인이 필요한 과목")
 
 
 OmitReason = Literal[
