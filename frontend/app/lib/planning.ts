@@ -5,10 +5,11 @@ export type PlanningConstraints = {
   base_candidate_id: string | null; min_credits: number; target_credits: number; max_credits: number;
   credits_strict: boolean; free_days: PlanningDay[]; blocked_times: TimeConstraint[]; avoid_times: TimeConstraint[];
   must_include: string[]; exclude: string[]; ge_areas: string[]; prefer_professor: string[];
+  /** true 면 토·일 수업도 자동 추천한다 */ allow_weekend: boolean;
 };
 export const defaultPlanning: PlanningConstraints = {
   base_candidate_id: null, min_credits: 15, target_credits: 18, max_credits: 19, credits_strict: false,
-  free_days: [], blocked_times: [], avoid_times: [], must_include: [], exclude: [], ge_areas: [], prefer_professor: [],
+  free_days: [], blocked_times: [], avoid_times: [], must_include: [], exclude: [], ge_areas: [], prefer_professor: [], allow_weekend: false,
 };
 export function timeMinutes(value: string) {
   const match = /^(\d{2}):(\d{2})$/.exec(value);
@@ -42,6 +43,7 @@ export function restorePlanning(input: unknown, legacyCredits?: unknown, legacyF
   const data = input as Record<string, unknown>;
   for (const key of ["min_credits", "target_credits", "max_credits"] as const) if (typeof data[key] === "number" && Number.isInteger(data[key]) && data[key] >= 0 && data[key] <= 30) result[key] = data[key];
   result.credits_strict = data.credits_strict === true;
+  result.allow_weekend = data.allow_weekend === true;
   for (const key of ["must_include", "exclude", "ge_areas", "prefer_professor"] as const) if (Array.isArray(data[key])) result[key] = [...new Set(data[key].filter((v): v is string => typeof v === "string" && v.length <= 100))].slice(0, 100);
   if (Array.isArray(data.free_days)) result.free_days = [...new Set(data.free_days.filter((day): day is PlanningDay => planningDays.includes(day as PlanningDay)))];
   for (const key of ["blocked_times", "avoid_times"] as const) if (Array.isArray(data[key])) result[key] = data[key].filter(validTimeConstraint).slice(0, 30).map(({ day, start, end }) => ({ day, start, end }));

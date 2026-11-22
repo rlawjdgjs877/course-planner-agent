@@ -16,7 +16,10 @@ export type ApiSection = {
 export type Candidate = {
   id: string; sections: ApiSection[]; total_credits: number; credits_by_category: Record<string, number>;
   free_days: string[]; gap_minutes: number; score: number; warnings: string[];
+  /** 선수과목 확인 결과. 예전 백엔드에는 없을 수 있다. */
+  prereq_issues?: PrereqIssue[];
 };
+export type PrereqIssue = { course_id: string; name: string; missing: string[]; chain: string; page: number; kind: "missing" | "concurrent" };
 export type OmittedCourse = { item: string; code: string | null; name: string | null; reason: string; detail: string };
 export type Alternative = { id: string; relaxed: string[]; description: string; candidate: Candidate };
 export type GenerateTimetableResponse = {
@@ -27,9 +30,12 @@ export type GenerateTimetableRequest = PlanningConstraints & {
   track: string | null; grade: number | null; completed: string[]; max_candidates: number;
 };
 
+const backendTrack: Record<string, string> = { advanced: "advanced", ai: "ai", research: "research", platform: "platform", global: "global" };
+
 /** 저장된 조건 + 학생 정보 + 이수 체크 → POST /tools/generate_timetable 요청 본문. */
 export function buildGenerateRequest(planning: PlanningConstraints, student: StudentProfile, completedCourses: Course[]): GenerateTimetableRequest {
-  const track = computingMajors.some(major => major.id === student.majorId) ? student.majorId : null;
+  // 백엔드 planner.TRACKS 의 키로 맞춘다 (백엔드도 별칭을 받지만, 보낼 때부터 정식 키로 보낸다).
+  const track = computingMajors.some(major => major.id === student.majorId) ? backendTrack[student.majorId] ?? null : null;
   const grade = Number(student.currentGrade);
   // 백엔드는 과목코드를 기대한다. 코드가 없는 과목은 과목명으로 보내면 백엔드가 이름으로 찾는다.
   const completed = [...new Set(completedCourses.map(course => course.code || course.name))];
@@ -62,9 +68,17 @@ export function fetchCandidate(id: string, signal?: AbortSignal) {
 }
 
 export type ChatTurn = { role: "user" | "assistant"; content: string };
-export type PlanChatResponse = { reply: string; applied: boolean; request: GenerateTimetableRequest; response: GenerateTimetableResponse | null };
+/** 챗봇 에이전트가 거친 단계 하나 (도구 호출). */
+export type AgentStep = { tool: string; label: string; detail: string; ok: boolean };
+export type PlanChatResponse = {
+  reply: string; applied: boolean; request: GenerateTimetableRequest; response: GenerateTimetableResponse | null;
+  // 아래는 새 백엔드에만 있다. 없을 때도 화면이 깨지지 않게 optional 로 둔다.
+  steps?: AgentStep[]; mode?: "ai" | "rules"; previous_candidate_id?: string | null;
+  /** 이 후보 탭을 보여 달라는 뜻 (예 "tt_002"). */
+  select_candidate?: string | null;
+};
 
 /** 나의 시간표 챗봇. message 가 없으면 지금 후보를 설명만 하고, 있으면 말대로 고친 시간표를 돌려준다. */
-export function chatTimetable(body: { message: string | null; request: GenerateTimetableRequest; candidate_id: string | null; history: ChatTurn[] }, signal?: AbortSignal) {
+export function chatTimetable(body: { message: string | null; request: GenerateTimetableRequest; candidate_id: string | null; candidate_ids: string[]; history: ChatTurn[] }, signal?: AbortSignal) {
   return request<PlanChatResponse>("/tools/chat", { method: "POST", body: JSON.stringify(body), signal });
 }
