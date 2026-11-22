@@ -1,11 +1,15 @@
 """에이전트 도구 정의 v3.2 를 따르는 API. 프론트엔드(Plann)와 이후 Claude 연동이 이 API 를 쓴다."""
 
+import logging
+
 from fastapi import APIRouter, HTTPException
 
 from app.agent import plan_chat
 from app.schemas import Candidate, GenerateTimetableRequest, GenerateTimetableResponse
 from app.services import planner
 from app.services.course_repository import load_courses
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tools", tags=["tools (v3.2)"])
 
@@ -32,9 +36,9 @@ def chat(request: plan_chat.PlanChatRequest) -> plan_chat.PlanChatResponse:
     try:
         return plan_chat.handle(request, load_courses())
     except Exception as error:  # AI 호출 실패 (키 오류, 한도 초과, 네트워크 등)
-        if request.message:
-            try:  # AI 가 안 되면 규칙으로라도 처리한다
-                return plan_chat.handle(request, load_courses(), ask=lambda *_: None)
-            except Exception:
-                pass
+        logger.exception("챗봇 처리 실패. 규칙으로 다시 시도한다")
+        try:  # AI 가 안 되면 규칙으로라도 처리한다 (설명도 템플릿으로)
+            return plan_chat.handle(request, load_courses(), ask=lambda *_: None)
+        except Exception:
+            logger.exception("규칙 처리도 실패")
         raise HTTPException(status_code=502, detail="챗봇이 답하지 못했습니다. 잠시 뒤 다시 시도해 주세요.") from error
