@@ -22,14 +22,16 @@ function ModeBadge({ mode }: { mode?: "ai" | "rules" }) {
   return <span className={`agent-mode ${mode}`}>{mode === "ai" ? "AI 에이전트" : "규칙 모드 — OPENAI 키 없음"}</span>;
 }
 
-function StepTimeline({ steps, mode }: { steps: AgentStep[]; mode?: "ai" | "rules" }) {
-  return <div className="agent-steps" aria-label="에이전트 작업 과정">
-    <div className="agent-steps-head"><span>에이전트가 한 일</span><ModeBadge mode={mode} /></div>
+function StepTimeline({ steps, mode, open }: { steps: AgentStep[]; mode?: "ai" | "rules"; open: boolean }) {
+  // 가장 최근 답만 펼치고, 이전 답의 단계는 한 줄로 접어 대화가 길어지지 않게 한다.
+  const ok = steps.filter(step => step.ok).length;
+  return <details className="agent-steps" aria-label="에이전트 작업 과정" open={open}>
+    <summary className="agent-steps-head"><span>에이전트가 한 일 · {steps.length}단계{ok === steps.length ? " 완료" : ` 중 ${ok}개 완료`}</span><ModeBadge mode={mode} /></summary>
     <ol>{steps.map((step, i) => <li key={i} className={step.ok ? "ok" : "fail"}>
       <span className="agent-step-icon" aria-hidden="true">{step.ok ? <Icon name="check" size={12} /> : "!"}</span>
       <div><strong>{step.label} <code title="호출한 도구">{step.tool}</code></strong>{step.detail && <small>{step.detail}</small>}</div>
     </li>)}</ol>
-  </div>;
+  </details>;
 }
 
 function PendingTimeline({ stages, title }: { stages: string[]; title: string }) {
@@ -86,6 +88,16 @@ export function TimetableChat({ request, candidateId, candidateIds = [], run, on
     if (!busy && !explaining) seen.current = turns.length;
   }, [turns, busy, explaining]);
 
+  const lastStepTurn = turns.reduce((last, turn, i) => (turn.steps?.length ? i : last), -1);
+  const input = useRef<HTMLTextAreaElement>(null);
+  // 입력창은 글이 길어지면 6줄까지 늘어나고, 그보다 길면 입력창 안에서 스크롤한다.
+  useEffect(() => {
+    const box = input.current;
+    if (!box) return;
+    box.style.height = "auto";
+    box.style.height = `${Math.min(box.scrollHeight, 6 * 22 + 20)}px`;
+  }, [text]);
+
   async function send() {
     const message = text.trim();
     if (!message || busy) return;
@@ -106,7 +118,7 @@ export function TimetableChat({ request, candidateId, candidateIds = [], run, on
     <div className="chat-log" ref={log} aria-live="polite">
       {!turns.length && !explaining && <p className="chat-empty">1안을 보고 왜 이렇게 짰는지 설명해 줄게. 말하면 1안을 바로 고쳐.</p>}
       {turns.map((turn, i) => <div key={i} className={`chat-turn ${turn.role}`}>
-        {turn.role === "assistant" && turn.steps && turn.steps.length > 0 && <StepTimeline steps={turn.steps} mode={turn.mode} />}
+        {turn.role === "assistant" && turn.steps && turn.steps.length > 0 && <StepTimeline key={`${i}-${i === lastStepTurn}`} steps={turn.steps} mode={turn.mode} open={i === lastStepTurn} />}
         {turn.role === "assistant" && (!turn.steps || !turn.steps.length) && turn.mode && <ModeBadge mode={turn.mode} />}
         <div className={`chat-bubble ${turn.role}`}>{turn.content}
           {turn.offers && <div className="chat-offers">{turn.offers.map(a => <button key={a.id} type="button" className="secondary-button" onClick={() => onPickAlternative?.(a.id)}>{a.description} 보기</button>)}</div>}
@@ -116,8 +128,10 @@ export function TimetableChat({ request, candidateId, candidateIds = [], run, on
       {busy && <PendingTimeline key={`edit-${turns.length}`} title="에이전트가 일하는 중" stages={editStages} />}
     </div>
     <form className="chat-input" onSubmit={e => { e.preventDefault(); send(); }}>
-      <input aria-label="챗봇에게 말하기" maxLength={500} placeholder="예: 금요일 비워줘, 아침 수업 싫어, ○○ 빼줘" value={text} onChange={e => setText(e.target.value)} disabled={!candidateId} />
-      <button className="primary-button" disabled={busy || !text.trim() || !candidateId}>보내기<Icon name="arrow" size={15} /></button>
+      <textarea ref={input} rows={1} aria-label="챗봇에게 말하기" maxLength={500} placeholder="예: 금요일 비워줘, 아침 수업 싫어, ○○ 빼줘" value={text} onChange={e => setText(e.target.value)} disabled={!candidateId}
+        onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }} />
+      <div className="chat-input-foot"><small>Shift+Enter 줄바꿈 · {text.length}/500</small>
+        <button className="primary-button" disabled={busy || !text.trim() || !candidateId}>보내기<Icon name="arrow" size={15} /></button></div>
     </form>
   </section>;
 }

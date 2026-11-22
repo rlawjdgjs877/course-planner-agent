@@ -136,7 +136,7 @@
 /* 결과 옆(넓은 화면) 또는 아래(좁은 화면)에 놓이는 챗봇. 시간표를 가리지 않게 떠 있지 않는다. */
 .results-layout{display:grid;grid-template-columns:minmax(0,1fr);gap:20px;align-items:start}
 .schedule-preview{container-type:inline-size}
-@container (min-width:780px){.results-layout{grid-template-columns:minmax(0,1fr) 300px}.results-layout .timetable-chat{position:sticky;top:16px}.results-layout .week-grid{min-width:440px}}
+@container (min-width:780px){.results-layout{grid-template-columns:minmax(0,1fr) 340px}.results-layout .timetable-chat{position:sticky;top:16px}.results-layout .week-grid{min-width:440px}}
 .timetable-chat{display:flex;flex-direction:column;gap:10px;padding:16px;border:1px solid #dfe5ee;border-radius:16px;background:#fff;box-shadow:0 10px 30px -16px #2b3d5a55;min-width:0}
 .timetable-chat .document-heading{margin:0}.timetable-chat .document-heading h2{margin:0}
 .chat-role{margin:4px 0 0;font-size:12px;color:#7a8ea6}
@@ -151,8 +151,14 @@
 .chat-bubble.pending{background:#f7f9fc;border:1px dashed #cfdced;width:92%}
 .chat-bubble .button-spinner{display:inline-block;border-color:#c5dbf5;border-top-color:#1473f5;vertical-align:-1px}
 .chat-offers{display:flex;flex-direction:column;gap:6px;margin-top:8px;white-space:normal}.chat-offers .secondary-button{text-align:left;font-size:13px}
-.chat-input{display:flex;gap:8px}
-.chat-input input{flex:1;min-width:0;padding:10px 12px;border:1px solid #d6dde8;border-radius:10px;font:inherit}
+.chat-input{display:flex;flex-direction:column;gap:6px}
+.chat-input textarea{width:100%;min-width:0;box-sizing:border-box;padding:10px 12px;border:1px solid #d6dde8;border-radius:10px;font:inherit;font-size:14px;line-height:22px;resize:none;overflow-y:auto;max-height:152px}
+.chat-input textarea:focus{outline:2px solid #1473f533;border-color:#1473f5}
+.chat-input-foot{display:flex;align-items:center;justify-content:space-between;gap:8px}.chat-input-foot small{color:#8a93a3;font-size:12px}
+@container (min-width:1060px){.results-layout{grid-template-columns:minmax(0,1fr) 400px}}
+details.agent-steps>summary{cursor:pointer;list-style:none}details.agent-steps>summary::-webkit-details-marker{display:none}
+details.agent-steps>summary>span:first-child::before{content:"▸ ";color:#8a93a3}details.agent-steps[open]>summary>span:first-child::before{content:"▾ "}
+details.agent-steps:not([open])>summary{margin-bottom:0}
 /* 에이전트 작업 과정 타임라인 */
 .agent-steps{width:92%;border:1px solid #dfe8f4;border-radius:10px;background:#fbfdff;padding:8px 10px}
 .chat-bubble .agent-steps{width:100%;border:0;background:transparent;padding:0}
