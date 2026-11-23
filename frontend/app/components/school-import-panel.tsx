@@ -7,6 +7,7 @@ import { closeKnuSession, knuRequest, KnuApiError, parseKnuFrame, type KnuImport
 import type { ImportedCourse } from "../lib/imported-courses";
 
 const GIVE_UP_MS = 60_000; // 로그인 뒤 이만큼 지나도 과목이 안 오면 실패로 본다
+const OPEN_GIVE_UP_MS = 20_000; // 로그인 전: 학교 로그인 화면이 이만큼 안에 안 열리면 실패로 본다
 const LOGIN_FAIL_MS = 3_000; // 로그인을 보낸 뒤 이만큼 지나도 로그인 칸이 그대로면 로그인 실패로 본다
 
 /** 서버 상태 문구를 세 단계로 줄인다. */
@@ -16,7 +17,8 @@ function stage(message: string) {
   return "로그인 중";
 }
 
-export function SchoolImportPanel({ onApply, autoStart = false }: { onApply: (courses: ImportedCourse[]) => void; autoStart?: boolean }) {
+export function SchoolImportPanel({ onApply, autoStart = false, onManual }: { onApply: (courses: ImportedCourse[]) => void; autoStart?: boolean; /** 실패했을 때 직접 체크로 넘어가기 */ onManual?: () => void }) {
+  const openedAt = useRef(0);
   const [availability, setAvailability] = useState<KnuImportStatus | null>(null);
   const [consent, setConsent] = useState(autoStart);
   const autoStartPending = useRef(autoStart);
@@ -41,8 +43,12 @@ export function SchoolImportPanel({ onApply, autoStart = false }: { onApply: (co
     if (starting.current || session.current) return;
     starting.current = true; setAttempted(true);
     setBusy(true); setError(""); setResult(null); setStatus("학교 로그인 화면을 여는 중입니다.");
+    openedAt.current = Date.now();
     try {
-      const data = await knuRequest<{ session: string }>("start", { consent: true });
+      const data = await knuRequest<{ session: string }>("start", { consent: true }, undefined, AbortSignal.timeout(OPEN_GIVE_UP_MS)).catch(reason => {
+        if (Date.now() - openedAt.current >= OPEN_GIVE_UP_MS - 500) throw new KnuApiError("학교 로그인 화면이 20초 안에 열리지 않았어요. 학교 서버가 느릴 수 있어요.");
+        throw reason;
+      });
       if (typeof data.session !== "string" || !data.session) throw new KnuApiError("학교 연결 정보를 받지 못했습니다.");
       if (!mounted.current) { void closeKnuSession(data.session); return; }
       session.current = data.session; setRunning(true);
@@ -93,6 +99,10 @@ export function SchoolImportPanel({ onApply, autoStart = false }: { onApply: (co
           if (mounted.current) setStatus(closed ? "이수 과목을 읽고 학교 연결을 종료했습니다. 목록을 확인한 뒤 반영해 주세요." : "과목 조회를 마쳤습니다. 연결 종료를 확인하지 못했으며 서버의 만료 시간에 자동 종료됩니다.");
           return;
         }
+        if (at === null && !frame.login_form && Date.now() - openedAt.current > OPEN_GIVE_UP_MS) {
+          giveUp(token, "학교 로그인 화면이 20초 안에 열리지 않았어요. 학교 서버가 느릴 수 있어요.");
+          return;
+        }
         if (at && frame.login_form && Date.now() - at > LOGIN_FAIL_MS) {
           loginAtRef.current = null; setLoginAt(null);
           setError("로그인되지 않았어요. 아이디와 비밀번호를 확인해 주세요.");
@@ -140,6 +150,7 @@ export function SchoolImportPanel({ onApply, autoStart = false }: { onApply: (co
     {waitingForLogin && <form className="school-login-form" onSubmit={login}><label htmlFor="school-login-id">통합정보시스템 아이디</label><input id="school-login-id" value={userId} onChange={e => setUserId(e.target.value)} maxLength={100} autoComplete="username" placeholder="아이디" /><label htmlFor="school-login-password">비밀번호</label><input id="school-login-password" type="password" value={password} onChange={e => setPassword(e.target.value)} maxLength={200} autoComplete="current-password" placeholder="비밀번호" /><div className="school-import-controls"><button type="submit" className="primary-button" disabled={!userId || !password}>로그인하고 불러오기</button><button type="button" className="secondary-button" onClick={stop}>취소</button></div></form>}
     {working && <div className="school-import-progress" role="status" aria-live="polite"><span className="button-spinner" aria-hidden="true" /><div><strong>{loginAt === null ? "학교 로그인 화면을 여는 중…" : `${stage(status)}…`}</strong>{seconds !== null && <small>{seconds}초</small>}</div>{running && <button type="button" className="secondary-button" onClick={stop}>취소</button>}</div>}
     {error && <p className="school-import-error" role="alert">{error}</p>}
+    {onManual && !running && !busy && !result && (error || availability?.available === false) && <div className="school-import-fallback"><p>학교 불러오기가 안 되면 과목을 직접 체크해서 바로 진행할 수 있어요.</p><button type="button" className="secondary-button" onClick={onManual}>직접 체크로 진행</button></div>}
     {!running && !busy && !result && availability?.available && (!autoStart || attempted) && <div className="school-import-controls"><button className="primary-button" disabled={!consent} onClick={start}>{error ? "다시 시도" : "불러오기 시작"}</button></div>}
     {result && <div className="school-import-result"><h3>읽어 온 이수 과목 {result.courses.length}개</h3><p>반영 전 목록을 확인해 주세요. 2026-2 수강 중인 과목 등 제외할 항목이 있으면 반영 후 체크를 해제할 수 있습니다.</p>{result.duplicates.length > 0 && <p className="school-import-warning">같은 코드가 여러 번 조회되어 하나만 남겼습니다. 재이수 내역을 확인해 주세요: {result.duplicates.join(", ")}</p>}<div className="imported-courses-table">{result.courses.map(course => <div key={course.code}><span>{course.code}</span><strong>{course.name}</strong><span>{course.credits ?? "미기재"}학점</span></div>)}</div><button className="primary-button" disabled={!result.courses.length} onClick={() => { onApply(result.courses); setResult(null); setStatus("확인한 이수 과목을 반영했습니다."); }}>확인한 이수 과목 반영</button></div>}
   </section>;

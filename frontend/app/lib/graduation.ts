@@ -1,15 +1,15 @@
 ﻿export type Requirement = { label: string; value: string };
-export type GraduationProfile = { id: string; name: string; basis: string; total: number; required: string[]; rows: Requirement[]; notes: string[]; sourcePage: number; sourceUrl: string };
+export type GraduationProfile = { id: string; name: string; basis: string; total: number; /** PDF 의 학점 구성에 적힌 전공·교양 최소 학점 (없으면 생략) */ major?: number; liberal?: number; required: string[]; rows: Requirement[]; notes: string[]; sourcePage: number; sourceUrl: string };
 const common = { label: "공통 인정요건", value: "전공 졸업요건과 경북대학교 졸업자격인정제 모두 충족" };
 export const graduationProfiles: GraduationProfile[] = [
- { id: "advanced", name: "심화컴퓨팅전공", basis: "2026학년도 기준", total: 130, required: ["기초프로그래밍", "자료구조", "알고리즘1", "종합설계프로젝트1"], sourcePage: 1, sourceUrl: "https://aicollege.knu.ac.kr/sub3_2_a.php", rows: [
+ { id: "advanced", name: "심화컴퓨팅전공", basis: "2026학년도 기준", total: 130, major: 72, liberal: 30, required: ["기초프로그래밍", "자료구조", "알고리즘1", "종합설계프로젝트1"], sourcePage: 1, sourceUrl: "https://aicollege.knu.ac.kr/sub3_2_a.php", rows: [
  { label: "학점 구성", value: "총 130학점: 전공 72 · 교양 30 · 그 외 28학점" },
  { label: "교양필수", value: "첨성인기초 / 첨성인핵심 / SDG교양" },
  { label: "공인 영어성적", value: "TOEIC 700점 이상 또는 이에 상응하는 공인 영어성적" },
  { label: "연구활동", value: "3학점 이상 또는 현장실습 대체 인정" },
  { label: "졸업심사", value: "전공 학업역량평가 응시" }, common],
  notes: ["연구활동·현장실습 대체와 영어 대체 인정은 학부 심화컴퓨팅 공지를 확인하세요.", "교양 이수 세부기준은 해당 학년도 학사안내를 따릅니다."] },
- { id: "research", name: "첨단컴퓨팅연구전공", basis: "2026학년도 기준", total: 130, required: ["기초프로그래밍", "자료구조", "첨단컴퓨팅특강", "알고리즘1"], sourcePage: 2, sourceUrl: "https://aicollege.knu.ac.kr/sub3_3_a.php", rows: [
+ { id: "research", name: "첨단컴퓨팅연구전공", basis: "2026학년도 기준", total: 130, major: 72, liberal: 30, required: ["기초프로그래밍", "자료구조", "첨단컴퓨팅특강", "알고리즘1"], sourcePage: 2, sourceUrl: "https://aicollege.knu.ac.kr/sub3_3_a.php", rows: [
  { label: "학점 구성", value: "총 130학점: 전공 72 · 교양 30 · 대학원 교과목 9 · 그 외 19학점" },
  { label: "교양필수", value: "첨성인기초 / 첨성인핵심 / SDG교양" },
  { label: "공인 영어성적", value: "TOEIC 700점 이상 또는 이에 상응하는 공인 영어성적" },
@@ -17,7 +17,7 @@ export const graduationProfiles: GraduationProfile[] = [
  { label: "연구행사", value: "공식 연구행사 3회 이상 참석 및 증빙자료 제출" },
  { label: "졸업심사", value: "졸업학기 논문 형식 연구보고서 제출 및 연구결과 발표 1회 이상" }, common],
  notes: ["연구활동 3개 학기는 연속이 아니어도 되며, 학기별 확인서를 제출하고 S/U로 평가합니다.", "연구행사는 BK·학부 세미나, 학술대회 등 지도교수가 인정하는 행사여야 합니다.", "발표는 구두·포스터 발표가 가능하며 공인 학회 발표로 대체할 수 있습니다.", "대학원 교과목 9학점은 학·석사 연계 또는 관련 규정에 따라 이수할 수 있습니다."] },
- { id: "ai", name: "인공지능컴퓨팅전공", basis: "2026학년도 기준", total: 130, required: ["컴퓨팅사고와SW코딩", "인공지능수학기초", "자료구조", "알고리즘1", "인공지능", "기계학습개론", "종합설계프로젝트1"], sourcePage: 3, sourceUrl: "https://aicollege.knu.ac.kr/sub3_4_a.php", rows: [
+ { id: "ai", name: "인공지능컴퓨팅전공", basis: "2026학년도 기준", total: 130, major: 72, required: ["컴퓨팅사고와SW코딩", "인공지능수학기초", "자료구조", "알고리즘1", "인공지능", "기계학습개론", "종합설계프로젝트1"], sourcePage: 3, sourceUrl: "https://aicollege.knu.ac.kr/sub3_4_a.php", rows: [
  { label: "학점 구성", value: "총 130학점 · 전공 72학점" },
  { label: "현장실습", value: "3학점 이상" },
  { label: "실용영어", value: "졸업자격인정제의 실용영어 영역 충족 (문서에 TOEIC 700점 별도 요건 없음)" },
@@ -49,3 +49,12 @@ export const globalTracks = [
  { id: "overseas", name: "해외복수학위 트랙", value: "TOEIC 800점 이상 · 해외복수학위과정 이수 또는 교환학생 1년 이상 · 창업교과목 3학점 이상 · 다중전공 선택" },
  { id: "master", name: "학·석사연계 트랙", value: "TOEIC 700점 이상 · 해외대학 인정학점 6학점 이상 · 현장실습 3학점 이상 · 다중전공 선택" },
 ];
+
+/** 이수구분 글자 → 전공/교양. "교양 / 전공기반"처럼 둘 다 적힌 과목은 앞쪽(교양)을 따른다. 모르면 null. */
+export function creditGroup(category: string | null | undefined): "major" | "liberal" | null {
+  if (!category) return null;
+  const first = category.split("/")[0];
+  if (first.includes("교양") || first.includes("기본소양")) return "liberal";
+  if (first.includes("전공")) return "major";
+  return null;
+}

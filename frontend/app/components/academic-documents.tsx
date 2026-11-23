@@ -36,7 +36,7 @@ export function AcademicDocuments({ selected, toggle, student, onMajorChange, im
         <details className="document-notes"><summary>대체 인정 및 세부 유의사항</summary><ul>{profile.notes.map(note => <li key={note}>{note}</li>)}</ul></details>
         <div className="source-links"><a href={`/documents/graduation-requirements.pdf#page=${profile.sourcePage}`} target="_blank" rel="noreferrer">졸업요건 PDF · {profile.sourcePage}쪽 ↗</a><a href={profile.sourceUrl} target="_blank" rel="noreferrer">PDF에 기재된 학부 안내 ↗</a></div>
       </div> : <div className="document-placeholder"><Icon name="book" size={24} /><p>위에서 학생 정보와 전공을 선택하면 관련 전공의 주전공 졸업요건 자료를 볼 수 있어요.</p><div className="profile-preview">{graduationProfiles.map(p => <button key={p.id} onClick={() => setProfileId(p.id)}>{p.name}<Icon name="arrow" size={13} /></button>)}</div></div>}
-      <div className="tip"><Icon name="info" size={17} /><p>첨부 PDF의 참고용 정리를 옮겼습니다. 2026학년도 전공 3개와 2025학년도까지로 표시된 전공 2개를 구분합니다. 입학 학년도·개인 학적·대체 인정에 따른 최종 기준은 학부에 확인하세요. 교양·비교과·전체 이수학점이 없어 졸업 가능 여부를 자동 판정하지 않습니다.</p></div>
+      <div className="tip"><Icon name="info" size={17} /><p>첨부 PDF의 참고용 정리를 옮겼습니다. 전공마다 기준 학년도가 다를 수 있습니다. 입학 학년도·개인 학적·대체 인정에 따른 최종 기준은 학부에 확인하세요. 교양·비교과·전체 이수학점이 없어 졸업 가능 여부를 자동 판정하지 않습니다.</p></div>
     </> : <>
       <p className="document-description">화살표 순서는 PDF의 표기를 옮긴 것입니다. ‘/’ 표기는 원문 그대로이며 선택·동시이수 조건을 임의로 해석하지 않았습니다.</p>
       <label className="document-field">과목 흐름 분류<select value={category} onChange={e => setCategory(e.target.value)}>{categories.map(c => <option key={c}>{c}</option>)}</select></label>

@@ -156,6 +156,8 @@ def fake(monkeypatch):
 
     manager = KnuSessionManager(browser_factory=factory)
     monkeypatch.setattr(knu_session, "manager", manager)
+    # 브라우저를 가짜로 바꿨으니 Playwright 가 없어도 API 검사를 그대로 돌린다 (CI 등).
+    monkeypatch.setattr(knu_session, "playwright_installed", lambda: True)
     monkeypatch.setenv("KNU_IMPORT_ENABLED", "1")
     for name in ("KNU_IMPORT_ALLOW_REMOTE", "KNU_IMPORT_IDLE_SECONDS", "KNU_IMPORT_MAX_SESSIONS"):
         monkeypatch.delenv(name, raising=False)
