@@ -91,9 +91,10 @@ def test_required_courses_state():
     assert states == {"자료구조": "done", "운영체제": "taking", "종합설계프로젝트1": "missing"}
 
 
-def test_diagnosis_url_is_exact():
-    assert g.is_diagnosis_url("https://knuin.knu.ac.kr/web/stddm/grdtn/guidance/selfDianosis/selectSelfDianosis")
-    assert not g.is_diagnosis_url("https://knuin.knu.ac.kr/web/stddm/grdtn/guidance/selfDianosis/selectListSelfDianosis")
+def test_student_number_from_transcript_or_request():
+    assert g.student_number({"data": [{"stdno": "2023000000", "sbjetCd": "A"}]}) == "2023000000"
+    assert g.student_number({"data": []}, '{"search":{"stdno":"2024111111"}}') == "2024111111"
+    assert g.student_number({"data": []}, "not json") is None
 
 
 def test_bad_payload_raises():

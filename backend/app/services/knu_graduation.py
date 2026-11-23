@@ -1,19 +1,14 @@
 """학교 '졸업자가진단' 화면 응답에서 학생 정보와 교과구분별 이수 현황을 뽑는다.
 
 학생 기본정보 응답(selectStudentInfoUdc)에는 이름, 생년월일, 연락처, 주소 같은 개인정보가 함께 온다.
-여기서는 아래 STUDENT_KEYS 에 있는 칸만 읽고 나머지는 보지도, 남기지도 않는다.
-학번도 입학 연도(앞 4자리)를 구하는 데만 쓰고 결과에 남기지 않는다.
+여기서는 필요한 칸(학년, 소속, 학적, 입학 구분 등)만 읽고 나머지는 보지도, 남기지도 않는다.
+학번은 졸업자가진단 조회와 입학 연도(앞 4자리) 추정에만 쓰고 결과에 남기지 않는다.
 """
 
+import json
 import re
 
 from app.schemas import Certification, CreditStatus, EssentialCourse, ImportedStudent
-
-STUDENT_MARKER = "selectStudentInfoUdc"
-DIAGNOSIS_MARKER = "selectSelfDianosis"  # 주소의 마지막 부분이 정확히 이것일 때만 (selectListSelfDianosis 와 구분)
-REQUIREMENT_MARKER = "selectListSelfDianosisDetl"
-REQUIRED_COURSE_MARKER = "selectListSelfDianosisEssnlSbjet"
-CERTIFICATION_MARKER = "selectListSelfDianosisRcgnnInfo"
 
 TRACKS = {  # 소속 이름에 들어 있는 전공 → 화면의 전공 id
     "심화컴퓨팅": "advanced",
@@ -44,6 +39,20 @@ def _rows(payload: object) -> list[dict]:
     return [row for row in rows if isinstance(row, dict)]
 
 
+def student_number(transcript: object, request_body: str | None = None) -> str | None:
+    """이수성적 응답(행의 stdno)이나 그 요청 본문(search.stdno)에서 학번을 찾는다. 졸업자가진단 조회에만 쓴다."""
+    rows = transcript.get("data") if isinstance(transcript, dict) else None
+    for row in rows if isinstance(rows, list) else []:
+        if isinstance(row, dict) and re.fullmatch(r"\d{6,12}", _text(row.get("stdno"))):
+            return _text(row.get("stdno"))
+    try:
+        body = json.loads(request_body or "")
+        found = _text((body.get("search") or {}).get("stdno")) if isinstance(body, dict) else ""
+    except (ValueError, AttributeError):
+        found = ""
+    return found if re.fullmatch(r"\d{6,12}", found) else None
+
+
 def track_of(department: str) -> str | None:
     compact = department.replace(" ", "")
     return next((track for key, track in TRACKS.items() if key in compact), None)
@@ -62,10 +71,6 @@ def _flag(value: object) -> bool | None:
 def _short(value: object, limit: int = 40) -> str | None:
     text = _text(value)
     return text[:limit] if text and text != "-" else None
-
-
-def is_diagnosis_url(url: str) -> bool:
-    return url.split("?", 1)[0].rstrip("/").rsplit("/", 1)[-1] == DIAGNOSIS_MARKER
 
 
 def extract_student(payload: object, base: ImportedStudent | None = None) -> ImportedStudent:
