@@ -262,3 +262,15 @@ def test_missing_required_courses_go_in_first_even_with_ge_shortage():
     result = planner.generate(request, catalog)
     assert {"ITEC0401", "COMP0312"} <= {s.course_code for s in result.candidates[0].sections}
     assert all("ITEC0401" in {s.course_code for s in c.sections} for c in result.candidates)
+
+
+@pytest.mark.skipif(not (DATA / "courses.json").exists(), reason="실제 개설 강좌 자료가 없음")
+def test_missed_priority_courses_are_explained():
+    catalog = load_courses(DATA / "courses.json")
+    request = GenerateTimetableRequest(
+        min_credits=15, target_credits=18, max_credits=19, track="advanced", grade=2,
+        completed=["기초프로그래밍"], priority_courses=["알고리즘1", "없는과목XYZ"],
+    )
+    warnings = " ".join(planner.generate(request, catalog).warnings)
+    assert "없는과목XYZ(이번 학기 미개설)" in warnings
+    assert "알고리즘1(" in warnings

@@ -401,6 +401,29 @@ class _Plan:
             alternative.id = alternative.candidate.id
         return alternatives
 
+    def missed_priority(self, candidates: list[Candidate]) -> list[str]:
+        """졸업자가진단의 미이수 필수과목 중 1안에 못 넣은 과목과 그 이유."""
+        if not self.request.priority_courses:
+            return []
+        placed = {section.course_code for section in candidates[0].sections} if candidates else set()
+        missed: list[str] = []
+        for item in dict.fromkeys(self.request.priority_courses):
+            found = _matches(item, self.courses)
+            code = found[0].course_code if found else item.strip()
+            name = found[0].name if found else item.strip()
+            if code in placed or code in self.completed or code in self.excluded_codes:
+                continue
+            if not found:
+                reason = "이번 학기 미개설"
+            elif code in self.prereq_skipped:
+                reason = "앞 단계 과목을 먼저 들어야 함"
+            elif all(not_recommended(course, self.request.allow_weekend) for course in found):
+                reason = not_recommended(found[0], self.request.allow_weekend) or "추천 제외"
+            else:
+                reason = "다른 과목·조건과 시간이나 학점이 맞지 않음"
+            missed.append(f"{name}({reason})")
+        return missed
+
     def respond(self) -> GenerateTimetableResponse:
         result, musts, omitted, below_min = self.solve(self.free_blocks, self.blocked, self.request.max_candidates)
         candidates = [self.candidate(timetable, "tt") for timetable in result.timetables]
@@ -421,6 +444,8 @@ class _Plan:
             )
         elif not self.prereq_known and any(c.prereq_issues for c in candidates):
             warnings.append("이수 과목 정보가 없어 선수과목은 확인용으로만 표시했습니다. 이수 과목을 알려 주면 더 정확합니다.")
+        if missed := self.missed_priority(candidates):
+            warnings.append("먼저 넣으려던 미이수 필수과목 중 빠진 과목: " + ", ".join(missed))
         if result.truncated:
             warnings.append("과목이 많아 일부 조합만 살펴봤습니다. 더 좋은 조합이 있을 수 있습니다.")
         if not candidates:
