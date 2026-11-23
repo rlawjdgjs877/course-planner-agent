@@ -211,3 +211,36 @@ details.agent-steps:not([open])>summary{margin-bottom:0}
 @media(max-width:720px){.desktop.is-welcome{min-width:0;padding:12px;overflow:hidden;background-attachment:scroll}.is-welcome .finder-window{min-width:0;flex-direction:column;height:auto;max-height:none;min-height:0;aspect-ratio:auto;border-radius:18px}.is-welcome .sidebar{width:100%;min-width:0;border-right:0;padding-bottom:10px}.is-welcome .sidebar-bottom,.is-welcome .sidebar-help{display:none}.is-welcome .input-method-choice{padding:20px 0 28px}.demo-badge{margin-left:6px}}
 
 .folder-back-bar{position:sticky;top:0;z-index:2;background:#fff;padding:6px 0;display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap}.folder-back-bar>span{color:#5f7894;font-size:13px;font-weight:600}.folder-back{display:inline-flex;align-items:center;gap:4px;padding:7px 12px;font-size:13px}.folder-back-arrow{font-size:18px;line-height:1}
+/* 학교 졸업자가진단 카드 */
+.school-diagnosis{margin:0 0 26px;padding:23px;border:1px solid #dfe8f3;border-radius:11px;background:linear-gradient(135deg,#f9fcff,#fff)}
+.school-diagnosis .document-heading h2{margin-bottom:5px}
+.diagnosis-callout{display:flex;align-items:center;gap:10px;padding:13px 14px;border-radius:8px;background:#fff6ea;border:1px solid #f4dcb8;color:#a0702c;margin-bottom:16px}
+.diagnosis-callout>svg{flex-shrink:0}
+.diagnosis-callout>div{flex:1;min-width:0}
+.diagnosis-callout strong{font-size:12px;font-weight:600}
+.diagnosis-callout p{margin:4px 0 0;font-size:12px;line-height:1.7;color:#ad8752}
+.diagnosis-callout.is-done{background:#eef7f2;border-color:#cfe8da;color:#4f8c6d}
+.diagnosis-callout.is-done p{color:#6d9e84}
+.diagnosis-table{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}
+.diagnosis-row{display:grid;grid-template-columns:minmax(0,2.4fr) repeat(5,minmax(0,1fr));gap:8px;align-items:center;padding:9px 13px;border-top:1px solid var(--line);font-size:12px;color:#5d6b7c}
+.diagnosis-row.is-head{border-top:0;background:#f7f8fa;color:#959da8;font-weight:500}
+.diagnosis-row>span:not(:first-child){text-align:right}
+.diagnosis-row strong{font-weight:600;color:#4d5d70}
+.diagnosis-row small{display:block;color:#a0a8b2;margin-top:2px}
+.diagnosis-row.is-short{background:#fffaf2}
+.diagnosis-row.is-short>span:nth-child(5),.diagnosis-row.is-short>span:last-child{color:#c2772a;font-weight:600}
+.diagnosis-essential{margin-top:18px}
+.diagnosis-essential h3{font-size:12px;font-weight:600;color:#5e748d;margin:0 0 9px}
+.diagnosis-essential ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.diagnosis-essential li{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:9px 12px;border:1px solid var(--line);border-radius:7px;background:#fff;font-size:12px}
+.diagnosis-essential li strong{font-weight:600;color:#4d5d70}
+.diagnosis-essential li small{color:#a0a8b2}
+.diagnosis-essential li .secondary-button{margin-left:auto;padding:6px 10px}
+.diagnosis-essential>p,.diagnosis-note{font-size:12px;color:#9aa4b0;line-height:1.7;margin:9px 0 0}
+.essential-state{font-size:12px;padding:2px 7px;border-radius:4px;background:#eef1f4;color:#7a8592}
+.is-done .essential-state{background:#e8f4ee;color:#509974}
+.is-taking .essential-state{background:#eaf3ff;color:#3a87d6}
+.is-missing .essential-state,.is-failed .essential-state{background:#fff0e0;color:#c2772a}
+.school-import-diagnosis{font-size:12px;color:#5d6b7c;background:#f3f8ff;border:1px solid #dde9f7;border-radius:6px;padding:8px 10px}
+.school-import-diagnosis strong{color:#2b82d3;margin-right:4px}
+@media(max-width:720px){.school-diagnosis{padding:16px}.diagnosis-row{grid-template-columns:minmax(0,1.6fr) repeat(5,minmax(0,1fr));gap:4px;padding:8px 9px}}

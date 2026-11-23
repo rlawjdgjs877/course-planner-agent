@@ -9,6 +9,8 @@ import { Folder, Icon } from "./icons";
 import { AcademicDocuments } from "./academic-documents";
 import { SchedulePreview } from "./schedule-preview";
 import { PlanningSettings } from "./planning-settings";
+import { SchoolDiagnosisCard } from "./school-diagnosis-card";
+import { fillStudentFromSchool, parseSchoolDiagnosis, type SchoolDiagnosis } from "../lib/school-diagnosis";
 import { defaultPlanning, planningDays, restorePlanning, type PlanningConstraints, type PlanningDay } from "../lib/planning";
 import { StudentProfileCard } from "./student-profile-card";
 import { courseMatchesSource, courseMatchesYear, courseGradeLabel, courseSources } from "../lib/offerings";
@@ -24,7 +26,26 @@ import { emptyStudentProfile, restoreStudentProfile, type StudentProfile } from 
 // 발표 백업용 데모 학생: 심화컴퓨팅 3학년, 1~2학년 전공·교양 이수. 과목 id 는 courses.ts, 코드는 개설 자료와 맞다.
 // 시스템프로그래밍은 일부러 빼서 운영체제 선수과목 경고가 보이게 했다.
 const demoCourseIds = ["knu-2", "knu-3", "knu-6", "knu-7", "knu-21", "knu-22", "knu-34", "knu-38", "course-CLTR0003", "course-CLTR0211", "course-CLTR0205", "course-CLTR0034", "course-CLTR0041", "course-CLTR0195"];
-const demoStudent: StudentProfile = { ...emptyStudentProfile, affiliation: "primary", majorId: "advanced", currentGrade: "3", entryPath: "regular" };
+const demoStudent: StudentProfile = { ...emptyStudentProfile, affiliation: "primary", majorId: "advanced", currentGrade: "3", entryPath: "regular", admissionYear: "2024" };
+// 발표용 샘플 학생의 졸업자가진단 (가짜 값). 실제 학생은 학교 불러오기로 같은 모양을 받는다.
+const demoDiagnosis: SchoolDiagnosis = {
+  student: { grade: 3, department: "IT대학 컴퓨터학부 심화컴퓨팅전공", track: "advanced", admission_year: "2024", status: "재학", admission_type: "신입학", campus: null, curriculum_year: "2024", semesters: 4, math_exempt: false, teaching: false, other_major: null, gpa: null, total_credits: 68 },
+  requirements: [
+    { name: "총학점", group: null, major: null, required: 140, earned: 68, confirmed: 68, in_progress: null, satisfied: false, shortage: 72, area: null },
+    { name: "첨성인기초", group: "교양", major: null, required: 18, earned: 15, confirmed: 15, in_progress: null, satisfied: false, shortage: 3, area: "첨성인기초" },
+    { name: "첨성인핵심인문", group: "교양", major: null, required: 6, earned: 3, confirmed: 3, in_progress: null, satisfied: false, shortage: 3, area: "인문" },
+    { name: "첨성인핵심자연", group: "교양", major: null, required: 6, earned: 6, confirmed: 6, in_progress: null, satisfied: true, shortage: 0, area: "자연" },
+    { name: "교양이수학점", group: "교양", major: null, required: 30, earned: 24, confirmed: 24, in_progress: null, satisfied: false, shortage: 6, area: null },
+    { name: "전공", group: "전공", major: "주전공", required: 84, earned: 36, confirmed: 36, in_progress: null, satisfied: false, shortage: 48, area: null },
+  ],
+  required_courses: [
+    { code: "COME0331", name: "자료구조", credits: 3, state: "done", major: "주전공" },
+    { code: "ELEC0462", name: "시스템프로그래밍", credits: 3, state: "missing", major: "주전공" },
+    { code: "ITEC0401", name: "종합설계프로젝트1", credits: 4, state: "missing", major: "주전공" },
+  ],
+  certifications: [],
+  ge_shortage: ["첨성인기초", "인문"],
+};
 
 const sections = [{ title: "이수 과목 체크", icon: "check" }, { title: "시간표 조건 설정", icon: "sliders" }, { title: "나의 시간표", icon: "calendar" }];
 
@@ -41,6 +62,7 @@ export default function FinderApp() {
   const [sourceFilter, setSourceFilter] = useState("all");
   const [selected, setSelected] = useState<string[]>([]);
   const [importedCourses, setImportedCourses] = useState<ImportedCourse[]>([]);
+  const [diagnosis, setDiagnosis] = useState<SchoolDiagnosis | null>(null);
   const [query, setQuery] = useState("");
   const [view, setView] = useState("grid");
   const [planning, setPlanning] = useState<PlanningConstraints>(defaultPlanning);
@@ -60,7 +82,7 @@ export default function FinderApp() {
     const restoreTimer = window.setTimeout(() => {
     try {
       if (new URLSearchParams(window.location.search).get("demo") === "1") {
-        setDemo(true); setInputMethod("manual"); setStudent(demoStudent); setSelected(demoCourseIds.filter(id => courses.some(c => c.id === id))); setShowChoice(false);
+        setDemo(true); setInputMethod("manual"); setStudent(demoStudent); setDiagnosis(demoDiagnosis); setSelected(demoCourseIds.filter(id => courses.some(c => c.id === id))); setShowChoice(false);
         setReady(true); return;
       }
       // 사이트를 새로 열면 처음부터 시작한다. 새로고침에는 남도록 탭 단위(sessionStorage)로 저장한다.
@@ -71,6 +93,7 @@ export default function FinderApp() {
         setStudent(restoreStudentProfile(stored.student));
         const restoredImports = normalizeImportedCourses(stored.importedCourses);
         setImportedCourses(restoredImports);
+        setDiagnosis(parseSchoolDiagnosis(stored.diagnosis));
         // 홈에는 학교 로그인만 있으므로, 이미 불러온 내역이 있으면 홈을 건너뛴다.
         if (stored.inputMethod === "school" && restoredImports.length) setShowChoice(false);
         setAcademicLink(normalizeAcademicLink(stored.academicLink));
@@ -85,19 +108,24 @@ export default function FinderApp() {
   }, []);
   useEffect(() => {
     if (!ready || demo) return; // 데모 학생은 탭 저장값을 덮어쓰지 않는다
-    try { sessionStorage.setItem("campus-finder-knu-documents-v2", JSON.stringify({ selected, planning, plannedIds, student, academicLink, inputMethod, importedCourses })); }
+    try { sessionStorage.setItem("campus-finder-knu-documents-v2", JSON.stringify({ selected, planning, plannedIds, student, academicLink, inputMethod, importedCourses, diagnosis })); }
     catch { queueMicrotask(() => setSaveState("브라우저 저장이 제한되어 현재 화면에서만 유지됩니다")); }
-  }, [selected, planning, plannedIds, student, academicLink, inputMethod, importedCourses, ready, demo]);
+  }, [selected, planning, plannedIds, student, academicLink, inputMethod, importedCourses, diagnosis, ready, demo]);
   const toggle = (id: string) => {
     const course = courses.find(c => c.id === id);
     if (selected.includes(id) && course?.code) setImportedCourses(prev => prev.filter(row => row.code !== course.code));
     setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
   // 학교에서 불러온 내역이 기준이다. 예전에 저장된 체크와 합치면 안 들은 과목이 이수로 남는다.
-  const applyImported = (incoming: ImportedCourse[]) => {
+  const applyImported = (incoming: ImportedCourse[], school: SchoolDiagnosis | null = null) => {
     const clean = normalizeImportedCourses(incoming);
     setImportedCourses(clean);
     setSelected(importedCatalogIds(clean, courses));
+    setDiagnosis(school);
+    if (!school) return;
+    // 졸업자가진단의 학년·소속·입학 연도로 학생 정보를 채우고, 부족한 교양 영역을 시간표 조건에 넣는다.
+    setStudent(prev => fillStudentFromSchool(prev, school.student));
+    if (school.ge_shortage.length) setPlanning(prev => ({ ...prev, ge_areas: [...new Set([...prev.ge_areas, ...school.ge_shortage])] }));
   };
   const removeImported = (code: string) => {
     setImportedCourses(previous => previous.filter(course => course.code !== code));
@@ -174,7 +202,7 @@ export default function FinderApp() {
           <div className="breadcrumb"><Icon name="book" size={14} /><span>나의 워크스페이스</span><Icon name="arrow" size={11} /><span>{showChoice ? "학적 정보 입력 방법" : sections[section].title}</span>{!showChoice && year !== null && section === 0 && <><Icon name="arrow" size={11} /><span>{year === 0 ? "공통·학년 미지정" : `${year}학년`}</span></>}</div>
           {showChoice ? <AcademicInputChoice onSchoolLogin={openSchoolDialog} disabled={!ready} consent={schoolConsent} onConsentChange={setSchoolConsent} publicDemo={PUBLIC_DEMO} onDemo={() => { window.location.search = "?demo=1"; }} onManual={() => startWith("manual")} /> : <>
           <div className="page-heading"><div><div className="step-label">STEP 0{section + 1} <span>/ 나만의 시간표 만들기</span></div><h1>{section === 0 ? "배운 만큼, 체크해 보세요." : section === 1 ? "나의 한 주를 그려 보세요." : "이번 학기, 이렇게 시작해요."}</h1><p>{section === 0 ? "경북대학교 컴퓨터학부 문서의 과목을 체크하고 졸업요건을 확인하세요." : section === 1 ? "원하는 학점과 공강 요일로 나에게 맞는 일주일을 준비해요." : "문서의 미이수 과목과 저장한 희망 조건을 확인하세요."}</p></div><span className="heading-icon"><Icon name={sections[section].icon} size={27} /></span></div>
-          {section === 0 && <><div className="chosen-input-method"><span>입력 방법: <strong>{inputMethod === "school" ? "학교 로그인으로 불러오기" : inputMethod === "link" ? "학적 링크 입력" : "직접 입력"}</strong></span><button type="button" onClick={() => { setShowChoice(true); window.scrollTo({ top: 0, behavior: "auto" }); }}>입력 방법 바꾸기</button></div>{inputMethod === "school" ? <><div className="cohort-note"><strong>학교에서 확인한 이수 내역을 아래에서 확인하세요.</strong><p>새로 불러오려면 학교 로그인 창을 다시 열 수 있습니다.</p><button className="primary-button" onClick={openSchoolDialog}>학교 로그인 창 다시 열기</button></div><StudentProfileCard profile={student} onChange={setStudent} /></> : inputMethod === "link" ? <AcademicLinkEntry savedLink={academicLink} onSave={setAcademicLink} /> : <StudentProfileCard profile={student} onChange={setStudent} />}</>}
+          {section === 0 && <><div className="chosen-input-method"><span>입력 방법: <strong>{inputMethod === "school" ? "학교 로그인으로 불러오기" : inputMethod === "link" ? "학적 링크 입력" : "직접 입력"}</strong></span><button type="button" onClick={() => { setShowChoice(true); window.scrollTo({ top: 0, behavior: "auto" }); }}>입력 방법 바꾸기</button></div>{inputMethod === "school" ? <><div className="cohort-note"><strong>학교에서 확인한 이수 내역을 아래에서 확인하세요.</strong><p>새로 불러오려면 학교 로그인 창을 다시 열 수 있습니다.</p><button className="primary-button" onClick={openSchoolDialog}>학교 로그인 창 다시 열기</button></div><StudentProfileCard profile={student} onChange={setStudent} /></> : inputMethod === "link" ? <AcademicLinkEntry savedLink={academicLink} onSave={setAcademicLink} /> : <StudentProfileCard profile={student} onChange={setStudent} />}{diagnosis && <SchoolDiagnosisCard diagnosis={diagnosis} geAreas={planning.ge_areas} mustInclude={planning.must_include} onAddGe={areas => setPlanning(prev => ({ ...prev, ge_areas: [...new Set([...prev.ge_areas, ...areas])] }))} onAddMust={key => setPlanning(prev => ({ ...prev, must_include: [...new Set([...prev.must_include, key])] }))} />}</>}
           {section === 0 ? <>
             <ImportedCourseSummary courses={importedCourses} matchedCodes={catalogCodes} onRemove={removeImported} />
             <div className="progress-card"><span className="progress-symbol"><Icon name="check" size={21} /></span><div className="progress-copy"><strong>전공·교양 과목, 차근차근 정리해요</strong><span>학교에서 불러온 과목과 직접 체크한 과목을 모두 셉니다. {graduationTotal ? `${graduationProfiles.find(p => p.id === student.majorId)?.name} 졸업학점 ${graduationTotal}학점 기준이며, 이수구분별 충족 여부는 판정하지 않습니다.` : "전공을 선택하면 졸업학점 대비 진행률을 보여 줘요."}{unknownCredits > 0 && ` 학점 미확인 ${unknownCredits}개는 합계에서 뺐습니다.`}</span></div><div className="progress-number"><strong>{knownCredits}<span>{graduationTotal ? ` / ${graduationTotal}` : ""}학점</span></strong><small>이수 과목 {completedRecords.length}개</small></div>{graduationTotal > 0 && <div className="progress-track"><div style={{ width: `${Math.min(100, knownCredits / graduationTotal * 100)}%` }} /></div>}</div>
@@ -190,7 +218,7 @@ export default function FinderApp() {
         <div className="status-bar"><span>{showChoice ? "Plann · 시작하기" : section === 0 ? `5개 폴더 · 수록 ${courses.length}개 과목` : "나의 학업 워크스페이스"}</span><span>{showChoice ? "학적 정보 입력 방법 선택" : <>{completedRecords.length}개 체크 · 확인된 {knownCredits}학점{unknownCredits > 0 && ` + 학점 미확인 ${unknownCredits}개`}</>}</span></div>
       </div>
     </div>
-    {schoolDialogOpen && <SchoolImportDialog onClose={closeSchoolDialog} onApply={incoming => { applyImported(incoming); setSchoolDialogOpen(false); startWith("school"); }} onManual={() => { setSchoolDialogOpen(false); startWith("manual"); }} />}
+    {schoolDialogOpen && <SchoolImportDialog onClose={closeSchoolDialog} onApply={(incoming, school) => { applyImported(incoming, school); setSchoolDialogOpen(false); startWith("school"); }} onManual={() => { setSchoolDialogOpen(false); startWith("manual"); }} />}
     <p className="desktop-caption"><span className="caption-line" />복잡한 대학 생활을, 조금 더 심플하게.<span className="caption-line" /></p>
   </div>;
 }

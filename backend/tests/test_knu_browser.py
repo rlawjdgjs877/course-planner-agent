@@ -34,12 +34,15 @@ MOCK_PAGE = """<!doctype html><html lang="ko"><meta charset="utf-8"><title>가�
   <span style="position:relative;display:inline-block"><a href="#" onclick="document.getElementById('sub').hidden=false;return false">성적</a><span id="cover" hidden style="position:absolute;inset:0;background:transparent"></span></span>
   <div id="sub" hidden><a href="#" onclick="document.getElementById('sub2').hidden=false;return false">학기성적</a></div>
   <div id="sub2" hidden><a href="#" onclick="openGrades();return false">이수성적 조회</a></div>
+  <a href="#" onclick="document.getElementById('gsub').hidden=false;return false">졸업</a>
+  <div id="gsub" hidden><a href="#" onclick="openDiagnosis();return false">[대학]졸업자가진단</a></div>
 </nav>
 <div id="login">
   <input id="uid" aria-label="아이디"><input id="pwd" type="password" aria-label="비밀번호">
   <button id="login-btn" onclick="login()">로그인</button>
 </div>
 <div id="grades" hidden><h2>이수성적 조회</h2><button id="query" onclick="loadGrades()">조회</button></div>
+<div id="diagnosis" hidden><h2>졸업자가진단</h2><button id="run" onclick="runDiagnosis()">졸업자가진단수행</button></div>
 <p id="result"></p>
 <script>
 function show(){
@@ -55,6 +58,17 @@ function login(){
   }
 }
 if(document.cookie.includes('mock_session=1')) show();
+async function openDiagnosis(){
+  document.getElementById('diagnosis').hidden=false;
+  await fetch('/web/stddm/common/studentInfoUdc/selectStudentInfoUdc', {method:'POST'});
+  await fetch('/web/stddm/grdtn/guidance/selfDianosis/selectSelfDianosis', {method:'POST'});
+}
+async function runDiagnosis(){
+  if(!confirm('졸업자가진단을 수행하시겠습니까?')) return;
+  window.diagnosisRun=(window.diagnosisRun||0)+1;
+  await fetch('/web/stddm/grdtn/guidance/selfDianosis/selectListSelfDianosisDetl', {method:'POST'});
+  await fetch('/web/stddm/grdtn/guidance/selfDianosis/selectListSelfDianosisEssnlSbjet', {method:'POST'});
+}
 function openGrades(){ document.getElementById('grades').hidden=false; }
 async function loadGrades(){
   const r = await fetch('/api/grade/searchTotalGradsInqrList.knu', {method:'POST'});
@@ -77,6 +91,22 @@ MOCK_GRADES = {
 }
 
 
+MOCK_STUDENT = {"data": [{"grade": "3", "pstnDprtnNm": "IT대학 컴퓨터학부 심화컴퓨팅전공", "stdno": "2023999999",
+                          "kornNm": "가짜이름", "mblph": "010-1234-5678", "schrsDtalSttnm": "재학"}]}
+MOCK_DIAGNOSIS = {"data": {"admsnYear": "2022", "crsdcApptnYear": "2022", "complSmstrCnt": "5"}}
+MOCK_DETAIL = {"data": [
+    {"univGrdtnAssssStnnm": "첨성인핵심인문", "sbjetSctin": "교양", "sndrdCrdit": "6", "complCrdit": "3", "sffcnYn": "N"},
+    {"univGrdtnAssssStnnm": "첨성인기초", "sbjetSctin": "교양", "sndrdCrdit": "18", "complCrdit": "18", "sffcnYn": "Y"},
+]}
+MOCK_ESSENTIAL = {"data": [{"sbjetCd": "COMP0411", "sbjetNm": "종합설계프로젝트1", "crdit": "3", "complYear": None}]}
+MOCK_POST = {
+    "selectStudentInfoUdc": MOCK_STUDENT,
+    "selectSelfDianosis": MOCK_DIAGNOSIS,
+    "selectListSelfDianosisDetl": MOCK_DETAIL,
+    "selectListSelfDianosisEssnlSbjet": MOCK_ESSENTIAL,
+}
+
+
 class MockSchool(BaseHTTPRequestHandler):
     def _send(self, body: bytes, content_type: str) -> None:
         self.send_response(200)
@@ -90,7 +120,8 @@ class MockSchool(BaseHTTPRequestHandler):
         self._send(page.encode(), "text/html; charset=utf-8")
 
     def do_POST(self):  # noqa: N802
-        self._send(json.dumps(MOCK_GRADES, ensure_ascii=False).encode(), "application/json; charset=utf-8")
+        body = MOCK_POST.get(self.path.rsplit("/", 1)[-1], MOCK_GRADES)
+        self._send(json.dumps(body, ensure_ascii=False).encode(), "application/json; charset=utf-8")
 
     def log_message(self, *args):
         pass
@@ -147,6 +178,13 @@ def test_login_shortcut_fills_school_login_and_finishes(school, caplog):
     assert frame["finished"] and frame["login_form"] is False
     assert frame["image"] is None
     assert [c["code"] for c in frame["courses"]] == ["COMP0201", "CLTR0001"]
+    # 이어서 졸업자가진단까지 읽는다. 개인정보는 내보내지 않는다.
+    assert frame["student"]["grade"] == 3 and frame["student"]["track"] == "advanced"
+    assert frame["student"]["admission_year"] == "2022" and frame["student"]["curriculum_year"] == "2022"
+    assert frame["ge_shortage"] == ["인문"]
+    assert [c["state"] for c in frame["required_courses"]] == ["missing"]
+    exported = json.dumps(frame, ensure_ascii=False)
+    assert all(x not in exported for x in ("가짜이름", "010-1234-5678", "2023999999"))
     # 로그인 칸이 없으면 409 로 알려 주고, 비밀번호는 응답과 로그 어디에도 없다.
     again = client.post("/import/knu/login", json={"user_id": "student", "password": secret}, headers=headers)
     assert again.status_code == 409 and secret not in again.text
@@ -187,8 +225,10 @@ def test_full_flow_against_a_mock_school(school, caplog):
             break
         time.sleep(0.5)
     assert frame["finished"], statuses
-    assert time.time() - began < 10, statuses  # 고치기 전에는 약 14초
-    assert set(school._sessions[token].visited_menus) == {"성적", "학기성적"}, statuses  # 화면 폴링이 문구를 놓칠 수 있어 기록으로 확인
+    assert time.time() - began < 20, statuses  # 이수성적 + 졸업자가진단
+    assert set(school._sessions[token].visited_menus) == {"졸업", "grad-target"}, statuses  # 성적 메뉴 기록은 졸업 단계로 넘어갈 때 비운다
+    assert school._sessions[token].grad_run_clicks == 1  # 졸업자가진단수행을 한 번 눌렀다 (확인 창도 확인)
+    assert [r["name"] for r in frame["requirements"]] == ["첨성인핵심인문", "첨성인기초"]  # 화면 폴링이 문구를 놓칠 수 있어 기록으로 확인
     assert school._sessions[token].fallback_used is False  # 학사행정은 누르지 않았다
     assert school._sessions[token].query_clicks == 1  # 조회 버튼을 자동으로 한 번 눌렀다 (공지 팝업이 떠 있어도)
     # 다 읽으면 학교 세션(쿠키)을 담은 브라우저를 바로 닫는다. 읽은 과목은 남는다.

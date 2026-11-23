@@ -2,7 +2,8 @@
 import { useEffect, useRef } from "react";
 import { SchoolImportPanel } from "./school-import-panel";
 import type { ImportedCourse } from "../lib/imported-courses";
-export function SchoolImportDialog({ onClose, onApply, onManual }: { onClose: () => void; onApply: (courses: ImportedCourse[]) => void; onManual?: () => void }) {
+import type { SchoolDiagnosis } from "../lib/school-diagnosis";
+export function SchoolImportDialog({ onClose, onApply, onManual }: { onClose: () => void; onApply: (courses: ImportedCourse[], diagnosis: SchoolDiagnosis | null) => void; onManual?: () => void }) {
   const dialog = useRef<HTMLDivElement>(null);
   const close = useRef<HTMLButtonElement>(null);
   useEffect(() => {
