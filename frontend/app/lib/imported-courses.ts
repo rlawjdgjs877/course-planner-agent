@@ -1,5 +1,6 @@
 export type ImportedCourse = { code: string; name: string; credits: number | null; category: string | null };
-export type CatalogCourse = { id: string; code?: string };
+export type CatalogCourse = { id: string; code?: string; name?: string };
+const compact = (name: string) => name.replace(/\s+/g, "");
 export function normalizeImportedCourses(input: unknown): ImportedCourse[] {
   if (!Array.isArray(input)) return [];
   const result = new Map<string, ImportedCourse>();
@@ -19,5 +20,7 @@ export function mergeImportedCourses(existing: ImportedCourse[], incoming: Impor
 }
 export function importedCatalogIds(imported: ImportedCourse[], catalog: CatalogCourse[]) {
   const codes = new Set(imported.map(course => course.code));
-  return catalog.filter(course => course.code && codes.has(course.code)).map(course => course.id);
+  const names = new Set(imported.map(course => compact(course.name)));
+  // 과목코드가 없는 문서 수록 과목(예: 기초프로그래밍)은 과목명으로 연결한다.
+  return catalog.filter(course => course.code ? codes.has(course.code) : !!course.name && names.has(compact(course.name))).map(course => course.id);
 }

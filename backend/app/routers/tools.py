@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, HTTPException
 
+from app.agent import plan_chat
 from app.schemas import Candidate, GenerateTimetableRequest, GenerateTimetableResponse
 from app.services import planner
 from app.services.course_repository import load_courses
@@ -22,3 +23,18 @@ def get_candidate(candidate_id: str) -> Candidate:
     if candidate is None:
         raise HTTPException(status_code=404, detail="후보를 찾지 못했습니다. 서버를 다시 켜면 후보가 지워집니다.")
     return candidate
+
+
+@router.post("/chat", response_model=plan_chat.PlanChatResponse)
+def chat(request: plan_chat.PlanChatRequest) -> plan_chat.PlanChatResponse:
+    """나의 시간표 챗봇. message 가 없으면 지금 후보(candidate_id)를 왜 이렇게 짰는지 설명하고,
+    있으면 말대로 조건을 고쳐 그 후보를 바탕으로 다시 만든다."""
+    try:
+        return plan_chat.handle(request, load_courses())
+    except Exception as error:  # AI 호출 실패 (키 오류, 한도 초과, 네트워크 등)
+        if request.message:
+            try:  # AI 가 안 되면 규칙으로라도 처리한다
+                return plan_chat.handle(request, load_courses(), ask=lambda *_: None)
+            except Exception:
+                pass
+        raise HTTPException(status_code=502, detail="챗봇이 답하지 못했습니다. 잠시 뒤 다시 시도해 주세요.") from error

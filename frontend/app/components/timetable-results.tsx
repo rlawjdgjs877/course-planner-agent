@@ -44,7 +44,7 @@ function CandidateView({ candidate }: { candidate: Candidate }) {
     <div className="schedule-summary"><span className="badge">{candidate.id.startsWith("tt_alt") ? "대안" : "자동 생성"}</span><span>{candidate.sections.length}개 분반 · {candidate.total_credits}학점</span><span>공강 {candidate.free_days.length ? candidate.free_days.join("·") : "없음"}</span><span>수업 사이 빈 시간 {Math.round(candidate.gap_minutes / 60 * 10) / 10}시간</span><span>{Object.entries(candidate.credits_by_category).map(([k, v]) => `${k} ${v}`).join(" · ")}</span></div>
     <WeekGrid candidate={candidate} />
     {candidate.warnings.length > 0 && <div className="manual-plan-issues">{candidate.warnings.map(w => <p key={w}>{w}</p>)}</div>}
-    <div className="planned-sections">{candidate.sections.map(s => <article key={s.course_id}><div><span>{s.course_id} · {s.credits}학점 · {s.category}{s.area ? ` · ${s.area}` : ""}</span><h3>{s.name}</h3><p>{s.professor || "교수 미정"}{s.grade ? ` · ${s.grade === "*" ? "전학년" : `${s.grade}학년`}` : ""}</p><p>{s.time_raw || "시간 미정"}</p>{s.capacity !== null && s.enrolled !== null && <small>신청 {s.enrolled} / 정원 {s.capacity} (학교 자료 짐작값)</small>}</div></article>)}</div>
+    <div className="planned-sections">{candidate.sections.map(s => <article key={s.course_id}><div><span>{s.course_id} · {s.credits}학점 · {s.category}{s.area ? ` · ${s.area}` : ""}</span><h3>{s.name}</h3><p>{s.professor || "교수 미정"}{s.grade ? ` · ${s.grade === "*" ? "전학년" : `${s.grade}학년`}` : ""}</p><p>{s.time_raw || "시간 미정"}</p></div></article>)}</div>
   </div>;
 }
 

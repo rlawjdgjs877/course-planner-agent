@@ -77,7 +77,6 @@ export function getStudentGuidance(profile: StudentProfile): string[] {
     if (!profile.entryPath) notes.push("입학·진입 경로를 선택해 주세요. 자율전공 진입·편입·전과는 추가 인정 내역 확인이 필요합니다.");
   }
   if (profile.affiliation !== "incoming" && profile.exchange !== "none") notes.push("타 대학 이수 과목은 학점 인정 결과와 전공·교양 분류를 확인한 뒤 반영해야 합니다. ‘인정 완료’ 선택만으로 학점을 더하거나 컴학 과목을 이수 처리하지 않습니다.");
-  if (!profile.curriculumYear && profile.affiliation !== "incoming") notes.push("적용 교육과정 연도가 아직 입력되지 않았습니다. PDF의 기준 연도와 본인의 적용 연도는 다를 수 있습니다.");
   notes.push("학생 구분은 사용자 입력 정보입니다. 첨부 PDF의 전공별 안내 외에 대상별 상세 기준은 추가 자료로 확인해야 하며, 현재 졸업 충족 여부를 자동 판정하지 않습니다.");
   return notes;
 }
