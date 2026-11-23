@@ -10,9 +10,9 @@ export type SchoolStudent = {
 };
 export type CreditStatus = {
   name: string; group: string | null; major: string | null; required: number | null; earned: number | null;
-  confirmed: number | null; in_progress: number | null; satisfied: boolean | null; shortage: number | null; area: string | null;
+  satisfied: boolean | null; shortage: number | null; area: string | null;
 };
-export type EssentialCourse = { code: string | null; name: string; credits: number | null; state: "done" | "taking" | "missing" | "failed"; major: string | null };
+export type EssentialCourse = { code: string | null; name: string; credits: number | null; state: "done" | "missing" | "failed"; major: string | null };
 export type Certification = { area: string; passed: boolean | null; exempt: boolean | null };
 export type SchoolDiagnosis = { student: SchoolStudent | null; requirements: CreditStatus[]; required_courses: EssentialCourse[]; certifications: Certification[]; ge_shortage: string[] };
 
@@ -22,7 +22,7 @@ const bool = (v: unknown) => typeof v === "boolean" ? v : null;
 const year = (v: unknown) => typeof v === "string" && /^(19|20)\d{2}$/.test(v) ? v : null;
 const obj = (v: unknown) => v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : null;
 const list = (v: unknown, max: number) => Array.isArray(v) ? v.slice(0, max).map(obj).filter((x): x is Record<string, unknown> => !!x) : [];
-const STATES = ["done", "taking", "missing", "failed"] as const;
+const STATES = ["done", "missing", "failed"] as const;
 
 export function parseSchoolDiagnosis(value: unknown): SchoolDiagnosis | null {
   const data = obj(value);
@@ -38,11 +38,11 @@ export function parseSchoolDiagnosis(value: unknown): SchoolDiagnosis | null {
   } : null;
   const requirements: CreditStatus[] = list(data.requirements, 80).flatMap(r => {
     const name = str(r.name, 60);
-    return name ? [{ name, group: str(r.group, 30), major: str(r.major, 30), required: num(r.required), earned: num(r.earned), confirmed: num(r.confirmed), in_progress: num(r.in_progress), satisfied: bool(r.satisfied), shortage: num(r.shortage), area: str(r.area, 30) }] : [];
+    return name ? [{ name, group: str(r.group, 30), major: str(r.major, 30), required: num(r.required), earned: num(r.earned), satisfied: bool(r.satisfied), shortage: num(r.shortage), area: str(r.area, 30) }] : [];
   });
   const required_courses: EssentialCourse[] = list(data.required_courses, 100).flatMap(c => {
     const name = str(c.name);
-    const state = STATES.find(x => x === c.state);
+    const state = c.state === "taking" ? "missing" : STATES.find(x => x === c.state); // 이번 학기 수강 중은 아직 미이수로 본다
     return name && state ? [{ code: str(c.code, 20), name, credits: num(c.credits), state, major: str(c.major, 30) }] : [];
   });
   const certifications: Certification[] = list(data.certifications, 30).flatMap(c => {
@@ -79,4 +79,4 @@ export function fillStudentFromSchool(profile: StudentProfile, school: SchoolStu
   return next;
 }
 
-export const essentialStateLabel: Record<EssentialCourse["state"], string> = { done: "이수", taking: "수강 중", missing: "미이수", failed: "재이수 필요" };
+export const essentialStateLabel: Record<EssentialCourse["state"], string> = { done: "이수", missing: "미이수", failed: "재이수 필요" };

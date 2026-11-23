@@ -79,16 +79,17 @@ def test_diagnosis_overrides_admission_year():
 def test_requirements_and_shortage():
     rows = g.extract_requirements(DETAIL)
     by = {r.name: r for r in rows}
-    assert by["첨성인핵심인문"].shortage == 3 and by["첨성인핵심인문"].in_progress == 3
+    # 수강 중 3학점은 이수로 치지 않는다 (성적이 나온 0학점 기준)
+    assert by["첨성인핵심인문"].earned == 0 and by["첨성인핵심인문"].shortage == 6
     assert by["첨성인핵심인문"].area == "인문"
     assert by["첨성인기초"].satisfied is True
     assert by["전공필수"].area is None
-    assert g.shortage_areas(rows) == ["자연", "인문"]
+    assert g.shortage_areas(rows) == ["인문", "자연"]
 
 
 def test_required_courses_state():
     states = {c.name: c.state for c in g.extract_required_courses(ESSENTIAL)}
-    assert states == {"자료구조": "done", "운영체제": "taking", "종합설계프로젝트1": "missing"}
+    assert states == {"자료구조": "done", "운영체제": "missing", "종합설계프로젝트1": "missing"}  # 수강 중은 미이수
 
 
 def test_student_number_from_transcript_or_request():
@@ -102,3 +103,22 @@ def test_bad_payload_raises():
 
     with pytest.raises(ValueError):
         g.extract_requirements({"data": None})
+
+
+def test_satisfied_is_recomputed_without_courses_in_progress():
+    rows = g.extract_requirements({"data": [
+        {"univGrdtnAssssStnnm": "첨성인핵심자연", "sbjetSctin": "교양", "sndrdCrdit": "6", "complCrdit": "6",
+         "stgrCrdit2": "3", "trmssStcuCrdit": "3", "sffcnYn": "Y"},
+    ]})
+    assert rows[0].earned == 3 and rows[0].satisfied is False and rows[0].shortage == 3
+
+
+def test_transcript_skips_courses_without_grade_yet():
+    from app.services.knu_transcript import extract_courses
+
+    courses, _ = extract_courses({"data": [
+        {"sbjetCd": "A1", "sbjetNm": "들은 과목", "crdit": "3", "gradsGradCd": "A0"},
+        {"sbjetCd": "A2", "sbjetNm": "수강 중", "crdit": "3", "gradsGradCd": None},
+        {"sbjetCd": "A3", "sbjetNm": "성적 칸 없는 직접 입력", "crdit": "3"},
+    ]})
+    assert [c.code for c in courses] == ["A1", "A3"]

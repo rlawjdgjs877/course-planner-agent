@@ -39,6 +39,8 @@ def extract_courses(payload: object) -> tuple[list[ImportedCourse], list[str]]:
             continue
         if _text(row.get("gradsGradCd")).upper() in EXCLUDED_GRADES:
             continue
+        if "gradsGradCd" in row and not _text(row.get("gradsGradCd")):
+            continue  # 성적이 아직 없는 과목은 이번 학기 수강 중이다. 다음 학기 시간표 기준이라 이수로 치지 않는다
         code, name = _text(row.get("sbjetCd")), _text(row.get("sbjetNm"))
         if not code or not name:
             continue

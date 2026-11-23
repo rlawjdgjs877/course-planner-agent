@@ -143,10 +143,16 @@ def extract_requirements(payload: object) -> list[CreditStatus]:
         if key in seen:
             continue
         seen.add(key)
-        required, earned = _number(row.get("sndrdCrdit")), _number(row.get("complCrdit"))
+        required, total = _number(row.get("sndrdCrdit")), _number(row.get("complCrdit"))
         confirmed = _number(row.get("stgrCrdit2"))
         taking = sum(x for x in (_number(row.get("trmssStcuCrdit")), _number(row.get("ssnssStcuCrdit"))) if x)
-        satisfied = _text(row.get("sffcnYn")).upper()
+        flag = _text(row.get("sffcnYn")).upper()
+        satisfied = True if flag == "Y" else False if flag == "N" else None
+        # 학교의 이수 학점(complCrdit)에는 이번 학기 수강 중 학점이 들어 있다. 다음 학기 시간표를 짜는 것이므로
+        # 성적이 나온 학점(stgrCrdit2)만 이수로 보고, 충족 여부도 그 기준으로 다시 판단한다.
+        earned = confirmed if confirmed is not None else max(0.0, total - taking) if total is not None and taking else total
+        if earned != total and required is not None and earned is not None:
+            satisfied = earned >= required
         is_ge = group == "교양" or ge_area(name) is not None
         result.append(
             CreditStatus(
@@ -155,9 +161,7 @@ def extract_requirements(payload: object) -> list[CreditStatus]:
                 major=_text(row.get("mltmjTpnm"))[:30] or None,
                 required=required,
                 earned=earned,
-                confirmed=confirmed,
-                in_progress=taking or None,
-                satisfied=True if satisfied == "Y" else False if satisfied == "N" else None,
+                satisfied=satisfied,
                 shortage=max(0.0, required - earned) if required is not None and earned is not None else None,
                 area=ge_area(name) if is_ge else None,
             )
@@ -166,14 +170,14 @@ def extract_requirements(payload: object) -> list[CreditStatus]:
 
 
 def extract_required_courses(payload: object) -> list[EssentialCourse]:
-    """필수과목 이수정보. 이수 연도가 없으면 미이수, 연도는 있는데 성적이 없으면 수강 중. 성적 값은 남기지 않는다."""
+    """필수과목 이수정보. 이수 연도가 없거나 성적이 아직 없으면(이번 학기 수강 중) 미이수로 본다. 성적 값은 남기지 않는다."""
     result: list[EssentialCourse] = []
     for row in _rows(payload):
         code, name = _text(row.get("sbjetCd")), _text(row.get("sbjetNm"))
         if not code and not name:
             continue
         year, grade = _text(row.get("complYear")), _text(row.get("gradsGradCd")).upper()
-        state = "missing" if not year else "taking" if not grade else "failed" if grade in {"F", "NP"} else "done"
+        state = "missing" if not year or not grade else "failed" if grade in {"F", "NP"} else "done"
         result.append(
             EssentialCourse(
                 code=code[:20] or None,

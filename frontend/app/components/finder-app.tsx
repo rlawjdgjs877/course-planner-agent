@@ -31,12 +31,12 @@ const demoStudent: StudentProfile = { ...emptyStudentProfile, affiliation: "prim
 const demoDiagnosis: SchoolDiagnosis = {
   student: { grade: 3, department: "IT대학 컴퓨터학부 심화컴퓨팅전공", track: "advanced", admission_year: "2024", status: "재학", admission_type: "신입학", campus: null, curriculum_year: "2024", semesters: 4, math_exempt: false, teaching: false, other_major: null, gpa: null, total_credits: 68 },
   requirements: [
-    { name: "총학점", group: null, major: null, required: 140, earned: 68, confirmed: 68, in_progress: null, satisfied: false, shortage: 72, area: null },
-    { name: "첨성인기초", group: "교양", major: null, required: 18, earned: 15, confirmed: 15, in_progress: null, satisfied: false, shortage: 3, area: "첨성인기초" },
-    { name: "첨성인핵심인문", group: "교양", major: null, required: 6, earned: 3, confirmed: 3, in_progress: null, satisfied: false, shortage: 3, area: "인문" },
-    { name: "첨성인핵심자연", group: "교양", major: null, required: 6, earned: 6, confirmed: 6, in_progress: null, satisfied: true, shortage: 0, area: "자연" },
-    { name: "교양이수학점", group: "교양", major: null, required: 30, earned: 24, confirmed: 24, in_progress: null, satisfied: false, shortage: 6, area: null },
-    { name: "전공", group: "전공", major: "주전공", required: 84, earned: 36, confirmed: 36, in_progress: null, satisfied: false, shortage: 48, area: null },
+    { name: "총학점", group: null, major: null, required: 140, earned: 68, satisfied: false, shortage: 72, area: null },
+    { name: "첨성인기초", group: "교양", major: null, required: 18, earned: 15, satisfied: false, shortage: 3, area: "첨성인기초" },
+    { name: "첨성인핵심인문", group: "교양", major: null, required: 6, earned: 3, satisfied: false, shortage: 3, area: "인문" },
+    { name: "첨성인핵심자연", group: "교양", major: null, required: 6, earned: 6, satisfied: true, shortage: 0, area: "자연" },
+    { name: "교양이수학점", group: "교양", major: null, required: 30, earned: 24, satisfied: false, shortage: 6, area: null },
+    { name: "전공", group: "전공", major: "주전공", required: 84, earned: 36, satisfied: false, shortage: 48, area: null },
   ],
   required_courses: [
     { code: "COME0331", name: "자료구조", credits: 3, state: "done", major: "주전공" },

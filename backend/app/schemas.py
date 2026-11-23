@@ -102,9 +102,7 @@ class CreditStatus(BaseModel):
     group: str | None = Field(default=None, description="교양 / 전공 등")
     major: str | None = Field(default=None, description="주전공 / 복수전공 등")
     required: float | None = Field(default=None, description="기준 학점")
-    earned: float | None = Field(default=None, description="이수 학점 (이번 학기 수강 중 포함)")
-    confirmed: float | None = Field(default=None, description="성적이 나온 학점")
-    in_progress: float | None = Field(default=None, description="지금 수강 중인 학점")
+    earned: float | None = Field(default=None, description="성적이 나온 이수 학점 (이번 학기 수강 중은 빼고)")
     satisfied: bool | None = Field(default=None, description="충족 여부")
     shortage: float | None = Field(default=None, description="부족 학점")
     area: str | None = Field(default=None, description="교양이면 시간표 조건의 교양 영역 이름")
@@ -116,7 +114,7 @@ class EssentialCourse(BaseModel):
     code: str | None = Field(default=None, description="과목코드")
     name: str = Field(description="과목명")
     credits: float | None = Field(default=None, description="학점")
-    state: str = Field(description="done 이수, taking 수강 중, missing 미이수, failed 재이수 필요")
+    state: str = Field(description="done 이수, missing 미이수(이번 학기 수강 중 포함), failed 재이수 필요")
     major: str | None = Field(default=None, description="주전공 / 복수전공 등")
 
 
