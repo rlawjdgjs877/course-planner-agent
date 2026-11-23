@@ -248,3 +248,17 @@ def test_real_catalog_follows_the_rules_and_is_fast():
         assert "금" in candidate.free_days
         assert not any("상주" in (s.building or "") for s in candidate.sections)
         assert not any(m.day == "월" and m.start < "12:00" for s in candidate.sections for m in s.meetings)
+
+
+
+@pytest.mark.skipif(not (DATA / "courses.json").exists(), reason="실제 개설 강좌 자료가 없음")
+def test_missing_required_courses_go_in_first_even_with_ge_shortage():
+    # 졸업자가진단에서 부족한 교양 영역이 들어와도 미이수 필수과목을 먼저 넣는다.
+    catalog = load_courses(DATA / "courses.json")
+    request = GenerateTimetableRequest(
+        min_credits=15, target_credits=18, max_credits=19, track="advanced", grade=3,
+        ge_areas=["인문", "첨성인기초"], priority_courses=["ITEC0401", "운영체제"],
+    )
+    result = planner.generate(request, catalog)
+    assert {"ITEC0401", "COMP0312"} <= {s.course_code for s in result.candidates[0].sections}
+    assert all("ITEC0401" in {s.course_code for s in c.sections} for c in result.candidates)

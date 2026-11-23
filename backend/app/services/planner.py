@@ -50,6 +50,7 @@ GE_AREAS = {  # 교양 자료 이름 → 영역 이름 (frontend/app/lib/data/so
     "literacy": "첨성인소양",
 }
 WEEKEND = ("토", "일")
+PRIORITY_BONUS = 8.0  # 졸업자가진단의 미이수 필수과목
 # 외국인 유학생 대상 교양: 국제처 개설 교양과 한국어 과목
 FOREIGN_GE = re.compile(r"Korean Language|Practical Korean|Academic Korean|외국인을\s*위한|한국어로\s*보는")
 # 다른 단과대 학생용 기초 교양 (인문사회계열·자연과학대학 전용)
@@ -127,6 +128,8 @@ def fit_bonus(course: Course, track: str | None, grade: int | None) -> float:
     sources = {x.source for x in course.listings}
     if course.category != "교양" and (sources & ({track} if track else set()) or "computing" in sources):
         bonus += 2 + (course.credits or 0) * 0.5  # 전공 먼저 (3학점 전공 = +3.5)
+        if "필수" in (course.category or ""):
+            bonus += 2.5  # 전공필수는 부족한 교양(+3)보다 먼저
     if grade and course.grade and course.grade.isdigit():
         level = int(course.grade)
         if level == grade:
@@ -199,6 +202,11 @@ class _Plan:
             for course in self.courses
             if (bonus := fit_bonus(course, self.track, request.grade))
         }
+        # 졸업자가진단에서 아직 안 들은 필수과목은 가장 먼저 넣어 본다 (열린 분반이 있을 때).
+        priority = {name.replace(" ", "") for name in request.priority_courses}
+        for course in self.courses:
+            if course.course_code in priority or course.name.replace(" ", "") in priority:
+                self.fit[course.course_id] = self.fit.get(course.course_id, 0.0) + PRIORITY_BONUS
 
         base = store.get(request.base_candidate_id)
         if request.base_candidate_id and base is None:

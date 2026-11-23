@@ -31,18 +31,21 @@ export type GenerateTimetableResponse = {
 };
 export type GenerateTimetableRequest = PlanningConstraints & {
   track: string | null; grade: number | null; completed: string[]; max_candidates: number;
+  /** 졸업자가진단의 미이수 필수과목. 가능하면 먼저 넣는다 */
+  priority_courses?: string[];
 };
 
 const backendTrack: Record<string, string> = { advanced: "advanced", ai: "ai", research: "research", platform: "platform", global: "global" };
 
 /** 저장된 조건 + 학생 정보 + 이수 체크 → POST /tools/generate_timetable 요청 본문. */
-export function buildGenerateRequest(planning: PlanningConstraints, student: StudentProfile, completedCourses: Course[]): GenerateTimetableRequest {
+export function buildGenerateRequest(planning: PlanningConstraints, student: StudentProfile, completedCourses: Course[], priorityCourses: string[] = []): GenerateTimetableRequest {
   // 백엔드 planner.TRACKS 의 키로 맞춘다 (백엔드도 별칭을 받지만, 보낼 때부터 정식 키로 보낸다).
   const track = computingMajors.some(major => major.id === student.majorId) ? backendTrack[student.majorId] ?? null : null;
   const grade = Number(student.currentGrade);
   // 백엔드는 과목코드를 기대한다. 코드가 없는 과목은 과목명으로 보내면 백엔드가 이름으로 찾는다.
   const completed = [...new Set(completedCourses.map(course => course.code || course.name))];
-  return { ...planning, track, grade: Number.isInteger(grade) && grade >= 1 && grade <= 6 ? grade : null, completed, max_candidates: 3 };
+  const priority = [...new Set(priorityCourses)].filter(key => !completed.includes(key)).slice(0, 30);
+  return { ...planning, track, grade: Number.isInteger(grade) && grade >= 1 && grade <= 6 ? grade : null, completed, max_candidates: 3, ...(priority.length ? { priority_courses: priority } : {}) };
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

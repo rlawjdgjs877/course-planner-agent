@@ -34,7 +34,7 @@ export function SchoolDiagnosisCard({ diagnosis, geAreas, mustInclude, onAddGe, 
       const key = c.code ?? c.name;
       const added = mustInclude.includes(key);
       return <li key={`${key}-${c.major}`} className={`is-${c.state}`}><span className="essential-state">{essentialStateLabel[c.state]}</span><strong>{c.name}</strong>{c.code && <small>{c.code}</small>}{c.credits !== null && <small>{fmt(c.credits)}학점</small>}{(c.state === "missing" || c.state === "failed") && <button type="button" className="secondary-button" disabled={added} onClick={() => onAddMust(key)}>{added ? "시간표에 넣기로 함" : "이번 시간표에 넣기"}</button>}</li>;
-    })}</ul><p>이번 학기에 열리지 않거나 학년이 맞지 않는 과목은 넣지 못할 수 있어요.</p></div>}
+    })}</ul><p>미이수 필수과목은 시간표를 만들 때 자동으로 먼저 넣어 봐요. 꼭 넣어야 하면 ‘이번 시간표에 넣기’를 누르세요. 이번 학기에 열리지 않는 과목은 넣지 못해요.</p></div>}
     {diagnosis.certifications.length > 0 && <div className="diagnosis-essential"><h3>졸업자격인정</h3><ul>{diagnosis.certifications.map(c => <li key={c.area}><span className="essential-state">{c.passed ? "합격" : c.exempt ? "면제" : "미취득"}</span><strong>{c.area}</strong></li>)}</ul></div>}
     <p className="diagnosis-note">이번 학기 수강 중인 과목은 성적이 나오기 전이라 이수에서 뺐어요. 학교 졸업자가진단 결과를 옮긴 참고 자료예요. 최종 졸업 판정은 학교 통합정보시스템과 학부에서 확인하세요.</p>
   </section>;

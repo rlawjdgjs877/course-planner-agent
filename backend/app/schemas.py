@@ -360,6 +360,9 @@ class GenerateTimetableRequest(BaseModel):
         default=None, description="학생 트랙: advanced(심컴) ai(인컴) research(첨컴) platform(플솦) global(글솦)"
     )
     completed: list[str] = Field(default_factory=list, description="이미 이수한 과목코드")
+    priority_courses: list[str] = Field(
+        default_factory=list, description="가능하면 먼저 넣을 과목 (졸업자가진단의 미이수 필수과목). 과목코드 또는 과목명"
+    )
     grade: int | None = Field(default=None, ge=1, le=6, description="학생 학년. 그 학년 과목을 우선한다")
     allow_weekend: bool = Field(
         default=False, description="True 면 토·일 수업도 자동 추천한다. False 여도 must_include 로 넣은 과목은 넣는다"

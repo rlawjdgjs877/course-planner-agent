@@ -152,7 +152,8 @@ export default function FinderApp() {
   const navigate = (index: number) => { setSection(index); setQuery(""); setYear(null); window.scrollTo({ top: 0, behavior: "auto" }); };
   const startWith = (method: AcademicInputMethod) => { setInputMethod(method); navigate(0); setShowChoice(false); };
   const openSchoolDialog = () => { if (hasSchoolPrivacyConsent(schoolConsent)) setSchoolDialogOpen(true); else { navigate(0); setShowChoice(true); } };
-  const requestBody = buildGenerateRequest(planning, student, completed);
+  const priorityCourses = diagnosis?.required_courses.filter(c => c.state !== "done").map(c => c.code ?? c.name) ?? [];
+  const requestBody = buildGenerateRequest(planning, student, completed, priorityCourses);
   const requestKey = JSON.stringify(requestBody);
   // 챗봇이 고친 조건과 시간표를 화면에 바로 반영한다. 새 결과의 run 번호를 돌려준다.
   const applyChat = (answer: PlanChatResponse) => {
@@ -163,7 +164,7 @@ export default function FinderApp() {
     setPlanning(next);
     // 고치기 전 1안을 기억해 두면 결과 화면이 새로 들어온·빠진 칸을 보여 줄 수 있다.
     const previous = result?.response.candidates.find(c => c.id === answer.previous_candidate_id) ?? result?.response.candidates[0] ?? null;
-    if (answer.response) setResult({ response: answer.response, requestKey: JSON.stringify(buildGenerateRequest(next, student, completed)), run, previous, select: answer.select_candidate ?? null });
+    if (answer.response) setResult({ response: answer.response, requestKey: JSON.stringify(buildGenerateRequest(next, student, completed, priorityCourses)), run, previous, select: answer.select_candidate ?? null });
     return run;
   };
   async function generate() {
