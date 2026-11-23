@@ -4,6 +4,9 @@ import type { PlanningConstraints } from "./planning";
 import type { StudentProfile } from "./student-profile";
 import { computingMajors } from "./student-profile";
 
+/** 공개 체험판(Vercel 등)으로 배포할 때 1. 학교 로그인 대신 샘플 학생·직접 체크로 시작한다. */
+export const PUBLIC_DEMO = process.env.NEXT_PUBLIC_PUBLIC_DEMO === "1";
+
 export const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000").replace(/\/+$/, "");
 
 export type ApiMeeting = { day: string; start: string; end: string };
@@ -81,4 +84,9 @@ export type PlanChatResponse = {
 /** 나의 시간표 챗봇. message 가 없으면 지금 후보를 설명만 하고, 있으면 말대로 고친 시간표를 돌려준다. */
 export function chatTimetable(body: { message: string | null; request: GenerateTimetableRequest; candidate_id: string | null; candidate_ids: string[]; history: ChatTurn[] }, signal?: AbortSignal) {
   return request<PlanChatResponse>("/tools/chat", { method: "POST", body: JSON.stringify(body), signal });
+}
+
+/** 무료 호스팅 서버는 한동안 안 쓰면 잠든다. 첫 화면에서 미리 깨워 둔다 (실패해도 무시). */
+export function wakeBackend() {
+  fetch(`${API_BASE}/health`).catch(() => undefined);
 }
