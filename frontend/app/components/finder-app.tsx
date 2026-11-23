@@ -152,7 +152,8 @@ export default function FinderApp() {
   const navigate = (index: number) => { setSection(index); setQuery(""); setYear(null); window.scrollTo({ top: 0, behavior: "auto" }); };
   const startWith = (method: AcademicInputMethod) => { setInputMethod(method); navigate(0); setShowChoice(false); };
   const openSchoolDialog = () => { if (hasSchoolPrivacyConsent(schoolConsent)) setSchoolDialogOpen(true); else { navigate(0); setShowChoice(true); } };
-  const priorityCourses = diagnosis?.required_courses.filter(c => c.state !== "done").map(c => c.code ?? c.name) ?? [];
+  // 개설 목록에 있는 과목은 과목코드로, 없는 과목은 이름으로 보낸다 (빠진 이유 안내에 이름이 보이게).
+  const priorityCourses = diagnosis?.required_courses.filter(c => c.state !== "done").map(c => c.code && catalogCodes.has(c.code) ? c.code : c.name) ?? [];
   const requestBody = buildGenerateRequest(planning, student, completed, priorityCourses);
   const requestKey = JSON.stringify(requestBody);
   // 챗봇이 고친 조건과 시간표를 화면에 바로 반영한다. 새 결과의 run 번호를 돌려준다.
