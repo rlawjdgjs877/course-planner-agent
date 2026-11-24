@@ -1,6 +1,7 @@
 import { normalizeImportedCourses, type ImportedCourse } from "./imported-courses";
+import { parseSchoolDiagnosis, type SchoolDiagnosis } from "./school-diagnosis";
 export type KnuImportStatus = { enabled: boolean; installed: boolean; available: boolean; reason: string | null; idle_minutes: number };
-export type KnuFrame = { image: string | null; frame_id: string | null; status: string; finished: boolean; login_form: boolean; needs_help: boolean; courses: ImportedCourse[]; duplicates: string[]; expires_in: number };
+export type KnuFrame = { image: string | null; frame_id: string | null; status: string; finished: boolean; login_form: boolean; needs_help: boolean; courses: ImportedCourse[]; duplicates: string[]; diagnosis: SchoolDiagnosis | null; expires_in: number };
 export type KnuInput = { type: "click"; x: number; y: number } | { type: "key"; key: string } | { type: "text"; text: string } | { type: "scroll"; delta: number };
 export class KnuApiError extends Error { constructor(message: string, public status = 0) { super(message); } }
 export function knuApiBase() {
@@ -34,7 +35,7 @@ export function parseKnuFrame(value: unknown): KnuFrame {
   if (!value || typeof value !== "object") throw new KnuApiError("학교 화면 응답 형식을 확인할 수 없습니다.");
   const data = value as Record<string, unknown>;
   if (typeof data.status !== "string" || typeof data.finished !== "boolean") throw new KnuApiError("학교 화면 응답 형식이 올바르지 않습니다.");
-  return { image: typeof data.image === "string" && data.image.length <= 8_000_000 && /^[A-Za-z0-9+/=\r\n]+$/.test(data.image) ? data.image : null, frame_id: typeof data.frame_id === "string" ? data.frame_id : null, status: data.status.slice(0, 1000), finished: data.finished, login_form: data.login_form === true, needs_help: data.needs_help === true, courses: normalizeImportedCourses(data.courses), duplicates: Array.isArray(data.duplicates) ? data.duplicates.filter((code): code is string => typeof code === "string").slice(0, 2000) : [], expires_in: typeof data.expires_in === "number" ? data.expires_in : 0 };
+  return { image: typeof data.image === "string" && data.image.length <= 8_000_000 && /^[A-Za-z0-9+/=\r\n]+$/.test(data.image) ? data.image : null, frame_id: typeof data.frame_id === "string" ? data.frame_id : null, status: data.status.slice(0, 1000), finished: data.finished, login_form: data.login_form === true, needs_help: data.needs_help === true, courses: normalizeImportedCourses(data.courses), duplicates: Array.isArray(data.duplicates) ? data.duplicates.filter((code): code is string => typeof code === "string").slice(0, 2000) : [], diagnosis: parseSchoolDiagnosis(data), expires_in: typeof data.expires_in === "number" ? data.expires_in : 0 };
 }
 export async function closeKnuSession(session: string, keepalive = false) {
   try { const response = await fetch(`${knuApiBase()}/import/knu/stop`, { method: "POST", credentials: "omit", cache: "no-store", keepalive, headers: { "Content-Type": "application/json", "X-Import-Session": session }, body: JSON.stringify({ session }) }); return response.ok; } catch { return false; }

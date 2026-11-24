@@ -240,8 +240,11 @@ def test_each_student_gets_a_separate_session(fake):
     respond(fake, context_a, "https://knuin.knu.ac.kr/x/searchTotalGradsInqrList.knu",
             {"data": [{"sbjetCd": "COMP0201", "sbjetNm": "자료구조", "crdit": 3, "sbjetSctnm": "전공필수", "gradsGradCd": "B+"}]})
     respond(fake, context_a, "https://knuin.knu.ac.kr/other/list", {"data": [{"sbjetCd": "X", "sbjetNm": "무시"}]})
+    # 이수 과목을 읽은 뒤 졸업자가진단을 조회한다. 가짜 응답에는 학교 화면이 없어 곧 과목만 들고 끝난다.
+    assert wait_for(lambda: fake.client.post("/import/knu/frame", json={"image": False}, headers=header(first)).json()["finished"])
 
     frame_a = fake.client.post("/import/knu/frame", headers=header(first)).json()
+    assert frame_a["requirements"] == [] and "졸업자가진단" in frame_a["status"]
     frame_b = fake.client.post("/import/knu/frame", headers=header(second)).json()
     assert frame_a["finished"] is True
     assert [c["code"] for c in frame_a["courses"]] == ["COMP0201"]

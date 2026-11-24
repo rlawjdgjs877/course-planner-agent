@@ -1,0 +1,19 @@
+# Render 블루프린트: 백엔드(FastAPI)를 Docker 로 배포한다. 프론트엔드는 Vercel(frontend/ 폴더)에 올린다.
+# Render 대시보드 → New → Blueprint → 이 저장소 선택. OPENAI_API_KEY 와 FRONTEND_ORIGINS 는 대시보드에서 입력.
+services:
+  - type: web
+    name: plann-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: KNU_IMPORT_ENABLED
+        value: "0"
+      - key: OPENAI_MODEL
+        value: gpt-5.4-mini
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: FRONTEND_ORIGINS
+        sync: false

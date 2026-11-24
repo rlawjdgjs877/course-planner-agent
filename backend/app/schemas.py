@@ -76,6 +76,56 @@ class ImportedCourse(BaseModel):
     category: str | None = Field(default=None, description="이수구분")
 
 
+class ImportedStudent(BaseModel):
+    """학교 졸업자가진단 화면에서 읽은 학생 정보. 이름·학번·연락처 같은 개인정보는 담지 않는다."""
+
+    grade: int | None = Field(default=None, description="학년")
+    department: str | None = Field(default=None, description="소속 (단과대 학부 전공)")
+    track: str | None = Field(default=None, description="소속에서 알아낸 전공 id (advanced 등)")
+    admission_year: str | None = Field(default=None, description="입학 연도")
+    status: str | None = Field(default=None, description="학적 상태 (재학 등)")
+    admission_type: str | None = Field(default=None, description="입학 구분 (신입학, 편입학 등)")
+    campus: str | None = Field(default=None, description="캠퍼스")
+    curriculum_year: str | None = Field(default=None, description="교육과정 적용 연도 (졸업요건 기준)")
+    semesters: int | None = Field(default=None, description="이수 학기 수")
+    math_exempt: bool | None = Field(default=None, description="수리·기초과학 이수학점 면제")
+    teaching: bool | None = Field(default=None, description="교직 이수")
+    other_major: str | None = Field(default=None, description="다전공 유형과 학과")
+    gpa: float | None = Field(default=None, description="평점평균")
+    total_credits: float | None = Field(default=None, description="총 취득학점")
+
+
+class CreditStatus(BaseModel):
+    """졸업자가진단의 교과구분 한 줄 (기준 학점과 취득 학점)."""
+
+    name: str = Field(description="기준 이름. 예: 첨성인핵심인문, 전공필수")
+    group: str | None = Field(default=None, description="교양 / 전공 등")
+    major: str | None = Field(default=None, description="주전공 / 복수전공 등")
+    required: float | None = Field(default=None, description="기준 학점")
+    earned: float | None = Field(default=None, description="성적이 나온 이수 학점 (이번 학기 수강 중은 빼고)")
+    satisfied: bool | None = Field(default=None, description="충족 여부")
+    shortage: float | None = Field(default=None, description="부족 학점")
+    area: str | None = Field(default=None, description="교양이면 시간표 조건의 교양 영역 이름")
+
+
+class EssentialCourse(BaseModel):
+    """졸업자가진단의 필수과목 한 줄."""
+
+    code: str | None = Field(default=None, description="과목코드")
+    name: str = Field(description="과목명")
+    credits: float | None = Field(default=None, description="학점")
+    state: str = Field(description="done 이수, missing 미이수(이번 학기 수강 중 포함), failed 재이수 필요")
+    major: str | None = Field(default=None, description="주전공 / 복수전공 등")
+
+
+class Certification(BaseModel):
+    """졸업자격인정 (외국어·인증 등)."""
+
+    area: str = Field(description="영역")
+    passed: bool | None = Field(default=None)
+    exempt: bool | None = Field(default=None)
+
+
 class KnuImportStatus(BaseModel):
     enabled: bool = Field(description="서버 설정에서 이 실험 기능이 켜져 있는지")
     installed: bool = Field(description="Playwright 가 설치되어 있는지")
@@ -122,6 +172,11 @@ class KnuFrame(BaseModel):
     finished: bool = Field(description="이수 과목을 읽었는지")
     courses: list[ImportedCourse] = Field(default_factory=list)
     duplicates: list[str] = Field(default_factory=list, description="여러 번 나온 과목코드")
+    student: ImportedStudent | None = Field(default=None, description="졸업자가진단에서 읽은 학생 정보")
+    requirements: list[CreditStatus] = Field(default_factory=list, description="교과구분별 이수 현황")
+    required_courses: list[EssentialCourse] = Field(default_factory=list, description="필수과목")
+    certifications: list[Certification] = Field(default_factory=list, description="졸업자격인정정보")
+    ge_shortage: list[str] = Field(default_factory=list, description="부족한 교양 영역")
     expires_in: int = Field(description="이 연결이 자동으로 닫히기까지 남은 초")
     login_form: bool = Field(default=False, description="학교 로그인 칸이 화면에 보이는지")
     logged_in: bool = Field(default=False, description="로그인을 마쳐 학교 화면을 가려도 되는지")
@@ -305,6 +360,9 @@ class GenerateTimetableRequest(BaseModel):
         default=None, description="학생 트랙: advanced(심컴) ai(인컴) research(첨컴) platform(플솦) global(글솦)"
     )
     completed: list[str] = Field(default_factory=list, description="이미 이수한 과목코드")
+    priority_courses: list[str] = Field(
+        default_factory=list, description="가능하면 먼저 넣을 과목 (졸업자가진단의 미이수 필수과목). 과목코드 또는 과목명"
+    )
     grade: int | None = Field(default=None, ge=1, le=6, description="학생 학년. 그 학년 과목을 우선한다")
     allow_weekend: bool = Field(
         default=False, description="True 면 토·일 수업도 자동 추천한다. False 여도 must_include 로 넣은 과목은 넣는다"

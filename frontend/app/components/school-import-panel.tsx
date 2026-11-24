@@ -5,19 +5,21 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { closeKnuSession, knuRequest, KnuApiError, parseKnuFrame, type KnuImportStatus, type KnuFrame } from "../lib/knu-import";
 import type { ImportedCourse } from "../lib/imported-courses";
+import type { SchoolDiagnosis } from "../lib/school-diagnosis";
 
-const GIVE_UP_MS = 60_000; // 로그인 뒤 이만큼 지나도 과목이 안 오면 실패로 본다
+const GIVE_UP_MS = 100_000; // 로그인 뒤 이만큼 지나도 끝나지 않으면 실패로 본다 (졸업자가진단까지 읽는다)
 const OPEN_GIVE_UP_MS = 20_000; // 로그인 전: 학교 로그인 화면이 이만큼 안에 안 열리면 실패로 본다
 const LOGIN_FAIL_MS = 3_000; // 로그인을 보낸 뒤 이만큼 지나도 로그인 칸이 그대로면 로그인 실패로 본다
 
 /** 서버 상태 문구를 세 단계로 줄인다. */
 function stage(message: string) {
+  if (/졸업/.test(message)) return "졸업자가진단 읽는 중";
   if (/조회 버튼|불러오는 중|응답/.test(message)) return "과목 읽는 중";
   if (/메뉴|조회 화면|자동 이동/.test(message)) return "성적 메뉴 찾는 중";
   return "로그인 중";
 }
 
-export function SchoolImportPanel({ onApply, autoStart = false, onManual }: { onApply: (courses: ImportedCourse[]) => void; autoStart?: boolean; /** 실패했을 때 직접 체크로 넘어가기 */ onManual?: () => void }) {
+export function SchoolImportPanel({ onApply, autoStart = false, onManual }: { onApply: (courses: ImportedCourse[], diagnosis: SchoolDiagnosis | null) => void; autoStart?: boolean; /** 실패했을 때 직접 체크로 넘어가기 */ onManual?: () => void }) {
   const openedAt = useRef(0);
   const [availability, setAvailability] = useState<KnuImportStatus | null>(null);
   const [consent, setConsent] = useState(autoStart);
@@ -145,13 +147,13 @@ export function SchoolImportPanel({ onApply, autoStart = false, onManual }: { on
   const waitingForLogin = running && loginForm && loginAt === null;
   const working = (busy || running) && !waitingForLogin;
   const seconds = loginAt !== null ? Math.max(0, Math.round((now - loginAt) / 1000)) : null;
-  return <section className="school-import-panel" aria-labelledby="school-import-title"><div className="document-heading"><div><span className="step-label">KNU · SCHOOL IMPORT</span><h2 id="school-import-title">학교 로그인으로 이수 과목 불러오기</h2></div><span className="document-badge">실험 기능</span></div><details className="school-import-notice" open={autoStart ? undefined : true}><summary>학교 로그인·저장 안내</summary><p>통합정보시스템 아이디·비밀번호를 넣으면 연결 서버가 띄운 브라우저가 학교 로그인 칸을 채우고 이수성적 조회까지 자동으로 진행합니다. 학교의 공식 연동은 아닙니다.</p><p>아이디·비밀번호는 학교 로그인 칸에 넣는 데만 쓰고 서버와 브라우저 어디에도 저장하거나 기록하지 않습니다. 과목을 다 읽으면 학교 세션을 담은 브라우저를 바로 닫습니다.</p><p>현재 가져오는 정보는 과목코드·과목명·학점·이수구분입니다. 학년·전공·학적 변동은 자동 확인되지 않습니다. F·NP 제외 외의 재이수·취소와 이수 학기는 직접 확인해 주세요.</p>{!autoStart && <label><input type="checkbox" checked={consent} disabled={running || busy} onChange={e => setConsent(e.target.checked)} />안내를 확인했으며 본인 계정으로 사용합니다. 확인 후 반영한 과목은 이 브라우저에 저장됩니다.</label>}</details>
+  return <section className="school-import-panel" aria-labelledby="school-import-title"><div className="document-heading"><div><span className="step-label">KNU · SCHOOL IMPORT</span><h2 id="school-import-title">학교 로그인으로 이수 과목 불러오기</h2></div><span className="document-badge">실험 기능</span></div><details className="school-import-notice" open={autoStart ? undefined : true}><summary>학교 로그인·저장 안내</summary><p>통합정보시스템 아이디·비밀번호를 넣으면 연결 서버가 띄운 브라우저가 학교 로그인 칸을 채우고 이수성적 조회까지 자동으로 진행합니다. 학교의 공식 연동은 아닙니다.</p><p>아이디·비밀번호는 학교 로그인 칸에 넣는 데만 쓰고 서버와 브라우저 어디에도 저장하거나 기록하지 않습니다. 과목을 다 읽으면 학교 세션을 담은 브라우저를 바로 닫습니다.</p><p>가져오는 정보는 이수 과목(과목코드·과목명·학점·이수구분)과 졸업자가진단의 학년·소속·입학 연도·교과구분별 학점·필수과목입니다. 졸업자가진단을 한 번도 실행한 적이 없으면 불러오기가 졸업자가진단수행을 한 번 실행합니다(학교에 실행 기록이 남습니다). 이름·학번·연락처·주소는 읽지 않습니다. F·NP 제외 외의 재이수·취소는 직접 확인해 주세요.</p>{!autoStart && <label><input type="checkbox" checked={consent} disabled={running || busy} onChange={e => setConsent(e.target.checked)} />안내를 확인했으며 본인 계정으로 사용합니다. 확인 후 반영한 과목은 이 브라우저에 저장됩니다.</label>}</details>
     {!working && !waitingForLogin && <p className="school-import-status" role="status">{status}</p>}
     {waitingForLogin && <form className="school-login-form" onSubmit={login}><label htmlFor="school-login-id">통합정보시스템 아이디</label><input id="school-login-id" value={userId} onChange={e => setUserId(e.target.value)} maxLength={100} autoComplete="username" placeholder="아이디" /><label htmlFor="school-login-password">비밀번호</label><input id="school-login-password" type="password" value={password} onChange={e => setPassword(e.target.value)} maxLength={200} autoComplete="current-password" placeholder="비밀번호" /><div className="school-import-controls"><button type="submit" className="primary-button" disabled={!userId || !password}>로그인하고 불러오기</button><button type="button" className="secondary-button" onClick={stop}>취소</button></div></form>}
     {working && <div className="school-import-progress" role="status" aria-live="polite"><span className="button-spinner" aria-hidden="true" /><div><strong>{loginAt === null ? "학교 로그인 화면을 여는 중…" : `${stage(status)}…`}</strong>{seconds !== null && <small>{seconds}초</small>}</div>{running && <button type="button" className="secondary-button" onClick={stop}>취소</button>}</div>}
     {error && <p className="school-import-error" role="alert">{error}</p>}
     {onManual && !running && !busy && !result && (error || availability?.available === false) && <div className="school-import-fallback"><p>학교 불러오기가 안 되면 과목을 직접 체크해서 바로 진행할 수 있어요.</p><button type="button" className="secondary-button" onClick={onManual}>직접 체크로 진행</button></div>}
     {!running && !busy && !result && availability?.available && (!autoStart || attempted) && <div className="school-import-controls"><button className="primary-button" disabled={!consent} onClick={start}>{error ? "다시 시도" : "불러오기 시작"}</button></div>}
-    {result && <div className="school-import-result"><h3>읽어 온 이수 과목 {result.courses.length}개</h3><p>반영 전 목록을 확인해 주세요. 2026-2 수강 중인 과목 등 제외할 항목이 있으면 반영 후 체크를 해제할 수 있습니다.</p>{result.duplicates.length > 0 && <p className="school-import-warning">같은 코드가 여러 번 조회되어 하나만 남겼습니다. 재이수 내역을 확인해 주세요: {result.duplicates.join(", ")}</p>}<div className="imported-courses-table">{result.courses.map(course => <div key={course.code}><span>{course.code}</span><strong>{course.name}</strong><span>{course.credits ?? "미기재"}학점</span></div>)}</div><button className="primary-button" disabled={!result.courses.length} onClick={() => { onApply(result.courses); setResult(null); setStatus("확인한 이수 과목을 반영했습니다."); }}>확인한 이수 과목 반영</button></div>}
+    {result && <div className="school-import-result"><h3>읽어 온 이수 과목 {result.courses.length}개</h3>{result.diagnosis?.student && <p className="school-import-diagnosis"><strong>졸업자가진단</strong> {[result.diagnosis.student.grade && `${result.diagnosis.student.grade}학년`, result.diagnosis.student.department, result.diagnosis.student.admission_year && `${result.diagnosis.student.admission_year} 입학`].filter(Boolean).join(" · ")}{result.diagnosis.ge_shortage.length > 0 && <> · 부족한 교양: {result.diagnosis.ge_shortage.join(", ")}</>}</p>}<p>반영 전 목록을 확인해 주세요. 2026-2 수강 중인 과목 등 제외할 항목이 있으면 반영 후 체크를 해제할 수 있습니다.</p>{result.duplicates.length > 0 && <p className="school-import-warning">같은 코드가 여러 번 조회되어 하나만 남겼습니다. 재이수 내역을 확인해 주세요: {result.duplicates.join(", ")}</p>}<div className="imported-courses-table">{result.courses.map(course => <div key={course.code}><span>{course.code}</span><strong>{course.name}</strong><span>{course.credits ?? "미기재"}학점</span></div>)}</div><button className="primary-button" disabled={!result.courses.length} onClick={() => { onApply(result.courses, result.diagnosis); setResult(null); setStatus("확인한 이수 과목을 반영했습니다."); }}>{result.diagnosis ? "이수 과목과 학생 정보 반영" : "확인한 이수 과목 반영"}</button></div>}
   </section>;
 }

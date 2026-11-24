@@ -31,7 +31,15 @@ from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlsplit
 
-from app.schemas import ImportedCourse, KnuInput
+from app.schemas import (
+    Certification,
+    CreditStatus,
+    EssentialCourse,
+    ImportedCourse,
+    ImportedStudent,
+    KnuInput,
+)
+from app.services import knu_graduation
 from app.services.knu_transcript import RESPONSE_MARKER, extract_courses
 
 # 단계별 걸린 시간을 서버 콘솔에 남긴다. 토큰, 입력한 글자, 주소의 경로·쿼리, 과목 내용은 남기지 않는다.
@@ -52,6 +60,44 @@ MENU_PATH = ("성적", "학기성적")
 FALLBACK_MENU = "학사행정"  # '성적'을 여러 번 눌러도 안 펼쳐지면 이 메뉴를 한 번 열어 본다
 FALLBACK_AFTER = 3  # '성적'을 이만큼 시도해도 진척이 없으면 FALLBACK_MENU 를 누른다
 QUERY_TEXT = re.compile(r"^\s*조회\s*$")
+# 이수 과목을 읽은 뒤, 로그인된 학교 화면 안에서 졸업자가진단 조회를 직접 부른다 (메뉴를 누르지 않는다).
+# 학교 화면이 쓰는 것과 같은 주소·본문이다. 쿠키는 브라우저가 붙이고, 응답은 이 함수 안에서만 읽는다.
+GRAD_TIMEOUT = 15.0  # 이 시간 안에 못 읽으면 이수 과목만 돌려준다
+GRAD_FETCH_SCRIPT = """async ({stdno, run}) => {
+  const base = '/web/stddm/grdtn/guidance/selfDianosis/';
+  const post = async (path, search) => {
+    try {
+      const r = await fetch(path, {method: 'POST', credentials: 'include',
+        headers: {'Content-Type': 'application/json; charset=UTF-8'}, body: JSON.stringify({search})});
+      return r.ok ? await r.json() : null;
+    } catch (e) { return null; }
+  };
+  const one = {stdno};
+  const [student, diagnosis] = await Promise.all([
+    post('/web/stddm/common/studentInfoUdc/selectStudentInfoUdc', {stdno, rrnoEyn: 'N'}),
+    post(base + 'selectSelfDianosis', one),
+  ]);
+  let history = await post(base + 'selectListSelfDianosis', one);
+  let ran = false;
+  const rows = (h) => (h && Array.isArray(h.data)) ? h.data : [];
+  if (!rows(history).length && run) {
+    await post(base + 'saveSelfDianosis', one);  // 진단 이력이 없으면 한 번 수행한다 (학생 화면의 '졸업자가진단수행'과 같다)
+    ran = true;
+    history = await post(base + 'selectListSelfDianosis', one);
+  }
+  const latest = rows(history).map((x) => x && x.exeSn).filter((x) => x !== null && x !== undefined);
+  let detail = null, essential = null, certification = null;
+  if (latest.length) {
+    const exeSn = latest.reduce((a, b) => (Number(b) > Number(a) ? b : a));
+    const search = {stdno, exeSn, exeYn: 'N'};
+    [detail, essential, certification] = await Promise.all([
+      post(base + 'selectListSelfDianosisDetl', search),
+      post(base + 'selectListSelfDianosisEssnlSbjet', search),
+      post(base + 'selectListSelfDianosisRcgnnInfo', search),
+    ]);
+  }
+  return {student, diagnosis, detail, essential, certification, ran};
+}"""
 LOGIN_TEXT = re.compile(r"^\s*로그인\s*$")
 LOGIN_ID_INPUTS = "input[type=text], input[type=email], input:not([type])"  # 아이디 칸 후보
 ALLOWED_KEYS = {
@@ -209,6 +255,13 @@ class KnuSession:
     closed: bool = False
     courses: list[ImportedCourse] = field(default_factory=list)
     duplicates: list[str] = field(default_factory=list)
+    student: ImportedStudent | None = None  # 학년·소속 등 (개인정보는 담지 않는다)
+    requirements: list[CreditStatus] = field(default_factory=list)
+    required_courses: list[EssentialCourse] = field(default_factory=list)
+    certifications: list[Certification] = field(default_factory=list)
+    phase: str = "transcript"  # transcript: 이수성적 조회 중, graduation: 졸업자가진단 읽는 중
+    grad_note: str = ""  # 졸업자가진단을 못 읽었을 때 안내
+    grad_ran: bool = False  # 진단 이력이 없어 졸업자가진단을 한 번 수행했는지
     visited_menus: dict[str, float] = field(default_factory=dict)  # 상위 메뉴를 마지막으로 누른 시각
     target_clicks: int = 0
     query_clicks: int = 0
@@ -483,19 +536,78 @@ class KnuSessionManager:
             pass
 
     async def _on_response(self, session: KnuSession, response: Any) -> None:
-        if session.closed or RESPONSE_MARKER not in response.url:
+        if session.closed or session.finished or session.phase != "transcript" or RESPONSE_MARKER not in response.url:
             return
         try:
-            courses, duplicates = extract_courses(await response.json())
+            payload = await response.json()
+            courses, duplicates = extract_courses(payload)
         except Exception:
             # 응답 내용은 남기지 않는다. 형식이 다르면 화면에서 직접 확인하도록 안내만 한다.
             session.status = "조회 응답을 읽지 못했습니다. 아래에서 직접 입력하거나 붙여넣기로 추가해 주세요."
             return
         session.courses, session.duplicates = courses, duplicates
-        session.finished = True
         session.mark(f"이수성적 응답 받음 ({len(courses)}개 과목)")
-        session.status = f"이수 과목 {len(courses)}개를 읽었습니다. 아래 목록을 확인해 주세요."
-        # 다 읽었으면 학교 세션(쿠키)을 담은 브라우저는 바로 닫는다. 읽은 과목은 연결을 끊을 때까지 둔다.
+        # 이어서 같은 화면 안에서 졸업자가진단 조회를 바로 부른다. 학번은 이 단계에서만 쓰고 남기지 않는다.
+        session.phase = "graduation"
+        session.status = f"이수 과목 {len(courses)}개를 읽었습니다. 졸업자가진단에서 학년과 교과구분별 학점을 읽는 중입니다."
+        request = getattr(response, "request", None)
+        stdno = knu_graduation.student_number(payload, getattr(request, "post_data", None))
+        asyncio.ensure_future(self._fetch_graduation(session, getattr(response, "frame", None), stdno))
+
+    async def _fetch_graduation(self, session: KnuSession, frame: Any, stdno: str | None) -> None:
+        note = ""
+        try:
+            if not stdno or frame is None:
+                raise ValueError("학번이나 학교 화면을 찾지 못함")
+            result = await asyncio.wait_for(frame.evaluate(GRAD_FETCH_SCRIPT, {"stdno": stdno, "run": True}), GRAD_TIMEOUT)
+            del stdno
+            if not isinstance(result, dict):
+                raise ValueError("형식이 다름")
+            self._apply_graduation(session, result)
+            if not session.requirements:
+                note = "졸업자가진단 결과가 없어 학년·교양 부족은 직접 확인해 주세요."
+        except Exception as error:
+            # 응답에는 개인정보가 섞여 있어 예외 내용도 남기지 않는다. 종류만 남긴다.
+            session.mark(f"졸업자가진단 읽기 실패 ({type(error).__name__})")
+            note = "졸업자가진단은 읽지 못해 학년·교양 부족은 직접 확인해 주세요."
+        self._finish(session, note)
+
+    @staticmethod
+    def _apply_graduation(session: KnuSession, result: dict) -> None:
+        def read(key: str, parse: Callable[..., Any], *args: Any) -> Any:
+            if not result.get(key):
+                return None
+            try:
+                return parse(result[key], *args)
+            except Exception:
+                return None
+
+        session.grad_ran = bool(result.get("ran"))
+        student = read("diagnosis", knu_graduation.extract_diagnosis, session.student) or session.student
+        session.student = read("student", knu_graduation.extract_student, student) or student
+        session.requirements = read("detail", knu_graduation.extract_requirements) or []
+        session.required_courses = read("essential", knu_graduation.extract_required_courses) or []
+        session.certifications = read("certification", knu_graduation.extract_certifications) or []
+        session.mark(
+            f"졸업자가진단 읽음 (학생 정보 {'있음' if session.student else '없음'}, 교과구분 {len(session.requirements)}개, "
+            f"필수과목 {len(session.required_courses)}개{', 진단 수행함' if session.grad_ran else ''})"
+        )
+
+    def _finish(self, session: KnuSession, note: str = "") -> None:
+        if session.finished or session.closed:
+            return
+        session.finished = True
+        session.grad_note = note
+        parts = [f"이수 과목 {len(session.courses)}개"]
+        if session.grad_ran:
+            parts.append("졸업자가진단 1회 수행")
+        if session.requirements:
+            parts.append(f"교과구분 {len(session.requirements)}개")
+        if session.student:
+            parts.append("학생 정보")
+        session.status = f"{', '.join(parts)}를 읽었습니다. 아래 목록을 확인해 주세요." + (f" {note}" if note else "")
+        session.mark("불러오기 끝: " + ", ".join(parts))
+        # 다 읽었으면 학교 세션(쿠키)을 담은 브라우저는 바로 닫는다. 읽은 내용은 연결을 끊을 때까지 둔다.
         asyncio.ensure_future(self._release(session))
 
     async def _release(self, session: KnuSession) -> None:
@@ -701,6 +813,10 @@ class KnuSessionManager:
             session.login_at = time.monotonic()
             session.mark("로그인 칸 사라짐 (로그인 완료로 판단)")
 
+        if session.phase == "graduation":
+            session.idle = True
+            return False  # 졸업자가진단은 화면 안에서 직접 조회한다. 메뉴는 더 누르지 않는다
+
         # 이수성적 조회 화면을 열었는데 응답이 없으면 '조회' 버튼을 누른다.
         if session.target_clicks and session.query_clicks < QUERY_CLICK_LIMIT:
             page, button = await self._find(session, self._query_button, key="query")
@@ -827,12 +943,18 @@ class KnuSessionManager:
             "finished": session.finished,
             "courses": session.courses,
             "duplicates": session.duplicates,
+            "student": session.student,
+            "requirements": session.requirements,
+            "required_courses": session.required_courses,
+            "certifications": session.certifications,
+            "ge_shortage": knu_graduation.shortage_areas(session.requirements),
             "expires_in": max(0, int(expires)),
             "login_form": session.password_visible and not session.finished,
             # 로그인을 마치면 학생 화면에서는 학교 화면을 가리고 진행 상황만 보여 준다.
             "logged_in": session.login_done and not session.password_visible,
             "needs_help": session.login_done
             and not session.finished
+            and session.phase == "transcript"  # 졸업자가진단 단계는 시간이 지나면 과목만 돌려준다
             and now - session.login_at > HELP_AFTER_LOGIN,
         }
 
@@ -921,6 +1043,7 @@ class KnuSessionManager:
         if session.nav_task is not None and session.nav_task is not asyncio.current_task():
             session.nav_task.cancel()
         session.courses, session.duplicates, session.last_frame = [], [], None
+        session.student, session.requirements, session.required_courses, session.certifications = None, [], [], []
         try:
             await session.context.close()  # 이 연결의 쿠키와 저장소가 함께 사라진다
         except Exception:

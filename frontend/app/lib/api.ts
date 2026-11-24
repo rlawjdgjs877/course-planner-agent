@@ -4,6 +4,9 @@ import type { PlanningConstraints } from "./planning";
 import type { StudentProfile } from "./student-profile";
 import { computingMajors } from "./student-profile";
 
+/** 공개 체험판(Vercel 등)으로 배포할 때 1. 학교 로그인 대신 샘플 학생·직접 체크로 시작한다. */
+export const PUBLIC_DEMO = process.env.NEXT_PUBLIC_PUBLIC_DEMO === "1";
+
 export const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000").replace(/\/+$/, "");
 
 export type ApiMeeting = { day: string; start: string; end: string };
@@ -28,18 +31,21 @@ export type GenerateTimetableResponse = {
 };
 export type GenerateTimetableRequest = PlanningConstraints & {
   track: string | null; grade: number | null; completed: string[]; max_candidates: number;
+  /** 졸업자가진단의 미이수 필수과목. 가능하면 먼저 넣는다 */
+  priority_courses?: string[];
 };
 
 const backendTrack: Record<string, string> = { advanced: "advanced", ai: "ai", research: "research", platform: "platform", global: "global" };
 
 /** 저장된 조건 + 학생 정보 + 이수 체크 → POST /tools/generate_timetable 요청 본문. */
-export function buildGenerateRequest(planning: PlanningConstraints, student: StudentProfile, completedCourses: Course[]): GenerateTimetableRequest {
+export function buildGenerateRequest(planning: PlanningConstraints, student: StudentProfile, completedCourses: Course[], priorityCourses: string[] = []): GenerateTimetableRequest {
   // 백엔드 planner.TRACKS 의 키로 맞춘다 (백엔드도 별칭을 받지만, 보낼 때부터 정식 키로 보낸다).
   const track = computingMajors.some(major => major.id === student.majorId) ? backendTrack[student.majorId] ?? null : null;
   const grade = Number(student.currentGrade);
   // 백엔드는 과목코드를 기대한다. 코드가 없는 과목은 과목명으로 보내면 백엔드가 이름으로 찾는다.
   const completed = [...new Set(completedCourses.map(course => course.code || course.name))];
-  return { ...planning, track, grade: Number.isInteger(grade) && grade >= 1 && grade <= 6 ? grade : null, completed, max_candidates: 3 };
+  const priority = [...new Set(priorityCourses)].filter(key => !completed.includes(key)).slice(0, 30);
+  return { ...planning, track, grade: Number.isInteger(grade) && grade >= 1 && grade <= 6 ? grade : null, completed, max_candidates: 3, ...(priority.length ? { priority_courses: priority } : {}) };
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -81,4 +87,9 @@ export type PlanChatResponse = {
 /** 나의 시간표 챗봇. message 가 없으면 지금 후보를 설명만 하고, 있으면 말대로 고친 시간표를 돌려준다. */
 export function chatTimetable(body: { message: string | null; request: GenerateTimetableRequest; candidate_id: string | null; candidate_ids: string[]; history: ChatTurn[] }, signal?: AbortSignal) {
   return request<PlanChatResponse>("/tools/chat", { method: "POST", body: JSON.stringify(body), signal });
+}
+
+/** 무료 호스팅 서버는 한동안 안 쓰면 잠든다. 첫 화면에서 미리 깨워 둔다 (실패해도 무시). */
+export function wakeBackend() {
+  fetch(`${API_BASE}/health`).catch(() => undefined);
 }

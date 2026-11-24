@@ -68,7 +68,7 @@ NOTICE_PAGE = """<!doctype html><html lang="ko"><meta charset="utf-8"><title>공
 
 MOCK_GRADES = {
     "data": [
-        {"sbjetCd": "COMP0201", "sbjetNm": "자료구조", "crdit": "3", "sbjetSctnm": "전공필수", "gradsGradCd": "A+"},
+        {"stdno": "2023999999", "sbjetCd": "COMP0201", "sbjetNm": "자료구조", "crdit": "3", "sbjetSctnm": "전공필수", "gradsGradCd": "A+"},
         {"sbjetCd": "COMP0202", "sbjetNm": "이산수학", "crdit": "3", "sbjetSctnm": "전공기반", "gradsGradCd": "F"},
         {"sbjetCd": "CLTR0010", "sbjetNm": "봉사", "crdit": "1", "sbjetSctnm": "교양", "gradsGradCd": "NP"},
         {"sbjetCd": "CLTR0001", "sbjetNm": "글쓰기", "crdit": "2", "sbjetSctnm": "교양", "gradsGradCd": "B0"},
@@ -77,9 +77,44 @@ MOCK_GRADES = {
 }
 
 
+MOCK_STUDENT = {"data": [{"grade": "3", "pstnDprtnNm": "IT대학 컴퓨터학부 심화컴퓨팅전공", "stdno": "2023999999",
+                          "kornNm": "가짜이름", "mblph": "010-1234-5678", "schrsDtalSttnm": "재학"}]}
+MOCK_DIAGNOSIS = {"data": {"admsnYear": "2022", "crsdcApptnYear": "2022", "complSmstrCnt": "5"}}
+MOCK_DETAIL = {"data": [
+    {"univGrdtnAssssStnnm": "첨성인핵심인문", "sbjetSctin": "교양", "sndrdCrdit": "6", "complCrdit": "3", "sffcnYn": "N"},
+    {"univGrdtnAssssStnnm": "첨성인기초", "sbjetSctin": "교양", "sndrdCrdit": "18", "complCrdit": "18", "sffcnYn": "Y"},
+]}
+MOCK_ESSENTIAL = {"data": [{"sbjetCd": "COMP0411", "sbjetNm": "종합설계프로젝트1", "crdit": "3", "complYear": None}]}
+MOCK_LISTS = {"selectListSelfDianosisDetl": MOCK_DETAIL, "selectListSelfDianosisEssnlSbjet": MOCK_ESSENTIAL,
+              "selectListSelfDianosisRcgnnInfo": {"data": []}}
+DIAGNOSIS_RUNS: list[str] = []  # 가짜 학교의 진단 실행 이력. 처음에는 비어 있어 한 번 수행해야 한다
+
+
+def mock_post(name: str, search: dict) -> tuple[int, dict]:
+    """학교와 같이 학번이 없으면 400, 목록 조회에 exeSn·exeYn 이 없으면 500 을 돌려준다."""
+    if name == "searchTotalGradsInqrList.knu":
+        return 200, MOCK_GRADES
+    if search.get("stdno") != "2023999999":
+        return 400, {}
+    if name == "selectStudentInfoUdc":
+        return 200, MOCK_STUDENT
+    if name == "selectSelfDianosis":
+        return 200, MOCK_DIAGNOSIS
+    if name == "saveSelfDianosis":
+        DIAGNOSIS_RUNS.append(str(len(DIAGNOSIS_RUNS) + 1))
+        return 200, {"success": True}
+    if name == "selectListSelfDianosis":
+        return 200, {"data": [{"exeSn": sn} for sn in reversed(DIAGNOSIS_RUNS)]}
+    if name in MOCK_LISTS:
+        if search.get("exeYn") != "N" or search.get("exeSn") not in DIAGNOSIS_RUNS:
+            return 500, {}
+        return 200, MOCK_LISTS[name]
+    return 404, {}
+
+
 class MockSchool(BaseHTTPRequestHandler):
-    def _send(self, body: bytes, content_type: str) -> None:
-        self.send_response(200)
+    def _send(self, body: bytes, content_type: str, status: int = 200) -> None:
+        self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -90,7 +125,13 @@ class MockSchool(BaseHTTPRequestHandler):
         self._send(page.encode(), "text/html; charset=utf-8")
 
     def do_POST(self):  # noqa: N802
-        self._send(json.dumps(MOCK_GRADES, ensure_ascii=False).encode(), "application/json; charset=utf-8")
+        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            search = json.loads(self.rfile.read(length) or b"{}").get("search") or {}
+        except ValueError:
+            search = {}
+        status, body = mock_post(self.path.rsplit("/", 1)[-1], search)
+        self._send(json.dumps(body, ensure_ascii=False).encode(), "application/json; charset=utf-8", status)
 
     def log_message(self, *args):
         pass
@@ -147,6 +188,13 @@ def test_login_shortcut_fills_school_login_and_finishes(school, caplog):
     assert frame["finished"] and frame["login_form"] is False
     assert frame["image"] is None
     assert [c["code"] for c in frame["courses"]] == ["COMP0201", "CLTR0001"]
+    # 이어서 졸업자가진단까지 읽는다. 개인정보는 내보내지 않는다.
+    assert frame["student"]["grade"] == 3 and frame["student"]["track"] == "advanced"
+    assert frame["student"]["admission_year"] == "2022" and frame["student"]["curriculum_year"] == "2022"
+    assert frame["ge_shortage"] == ["인문"]
+    assert [c["state"] for c in frame["required_courses"]] == ["missing"]
+    exported = json.dumps(frame, ensure_ascii=False)
+    assert all(x not in exported for x in ("가짜이름", "010-1234-5678", "2023999999"))
     # 로그인 칸이 없으면 409 로 알려 주고, 비밀번호는 응답과 로그 어디에도 없다.
     again = client.post("/import/knu/login", json={"user_id": "student", "password": secret}, headers=headers)
     assert again.status_code == 409 and secret not in again.text
@@ -187,8 +235,10 @@ def test_full_flow_against_a_mock_school(school, caplog):
             break
         time.sleep(0.5)
     assert frame["finished"], statuses
-    assert time.time() - began < 10, statuses  # 고치기 전에는 약 14초
+    assert time.time() - began < 10, statuses  # 졸업자가진단은 메뉴를 누르지 않고 바로 조회한다
     assert set(school._sessions[token].visited_menus) == {"성적", "학기성적"}, statuses  # 화면 폴링이 문구를 놓칠 수 있어 기록으로 확인
+    assert [r["name"] for r in frame["requirements"]] == ["첨성인핵심인문", "첨성인기초"]
+    assert "읽지 못해" not in frame["status"] and "결과가 없어" not in frame["status"]
     assert school._sessions[token].fallback_used is False  # 학사행정은 누르지 않았다
     assert school._sessions[token].query_clicks == 1  # 조회 버튼을 자동으로 한 번 눌렀다 (공지 팝업이 떠 있어도)
     # 다 읽으면 학교 세션(쿠키)을 담은 브라우저를 바로 닫는다. 읽은 과목은 남는다.
