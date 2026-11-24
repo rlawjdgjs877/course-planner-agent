@@ -237,3 +237,10 @@ def test_real_prerequisite_chain_reason():
     reason = plan_chat.prerequisite_reason(algo, request.completed, [algo])
     assert reason and reason.startswith("자료구조를 들었으니")
     assert plan_chat.prerequisite_reason(algo, [], [algo]) is None  # 이수 과목을 모르면 단정하지 않는다
+
+
+def test_explain_drops_echoed_instruction_lines():
+    from app.agent.plan_chat import drop_instruction_echo
+
+    text = "18학점으로 6과목을 짰어.\n주의: 숫자는 그대로 봐야 하고, 이유는 적힌 사실 안에서만 말할 수 있어.\n월·수는 비웠어."
+    assert drop_instruction_echo(text) == "18학점으로 6과목을 짰어.\n월·수는 비웠어."
