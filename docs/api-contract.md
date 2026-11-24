@@ -83,6 +83,7 @@ python -m scripts.import_data offerings ../frontend/data/course-sources
 | `track` | v3.2 밖 확장 | `advanced` `ai` `research` `platform` `global`. 같은 분반의 이수구분을 이 트랙 기준으로 고름 |
 | `grade` | v3.2 밖 확장 | 학생 학년. 그 학년 과목을 우선 (임시 기준) |
 | `completed` | v3.2 밖 확장 | 이미 이수한 과목코드. 후보에서 뺌. 프론트엔드 내부 id(`knu-1` 등)가 아니라 **과목코드**로 보내 주세요 |
+| `priority_courses` | v3.2 밖 확장 | 가능하면 먼저 넣을 과목(졸업자가진단의 미이수 필수과목). 과목코드 또는 과목명. 못 넣으면 `warnings`에 이유가 붙음 |
 | `max_candidates` | | 1~5, 기본 3 |
 
 자동 추천에서는 상주캠퍼스 강좌, 교직 과목, 시간 미정 강좌를 뺍니다. `must_include`로 직접 넣으면 넣습니다.
