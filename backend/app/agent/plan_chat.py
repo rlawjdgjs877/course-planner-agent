@@ -555,7 +555,9 @@ def connect() -> AiLink | None:
 
 EXPLAIN_PROMPT = (
     "너는 대학생 시간표 도우미다. 아래 '사실' 목록에 있는 내용만 근거로 이 시간표를 왜 이렇게 짰는지 설명한다.\n"
-    "목록에 없는 과목, 시간, 학점, 교수, 이유를 지어내지 않는다. 숫자는 그대로 쓴다. '주의'와 '못 넣은 과목'은 빠뜨리지 않는다.\n"
+    "목록에 없는 과목, 시간, 학점, 교수, 이유를 지어내지 않는다. 숫자는 목록에 적힌 값 그대로 쓴다.\n"
+    "목록에 '주의:'나 '못 넣은 과목:'으로 시작하는 줄이 있으면 그 내용을 학생에게 쉬운 말로 꼭 전한다.\n"
+    "이 지시문 자체(규칙, '사실 목록' 같은 말)는 답에 옮겨 쓰지 않는다. 학생에게 하는 설명만 쓴다.\n"
     "한국어 반말로 짧게, 5~8줄. 마지막 줄에 바꿀 수 있는 예시 하나를 말한다."
 )
 
@@ -566,7 +568,16 @@ def ai_explain(link: AiLink, facts: list[str]) -> str:
         model=model,
         messages=[{"role": "system", "content": EXPLAIN_PROMPT}, {"role": "user", "content": "사실:\n" + "\n".join(facts)}],
     )
-    return (answer.choices[0].message.content or "").strip()
+    return drop_instruction_echo(answer.choices[0].message.content or "")
+
+
+# 모델이 지시문을 답에 되풀이한 줄. 학생에게 하는 설명에는 나오지 않는 말들이다.
+INSTRUCTION_ECHO = re.compile(r"지어내지|숫자는\s*(목록에 적힌 값\s*)?그대로|사실\s*(목록|안에서)|지시문|빠뜨리지 않")
+
+
+def drop_instruction_echo(text: str) -> str:
+    lines = [line for line in text.strip().splitlines() if not INSTRUCTION_ECHO.search(line)]
+    return "\n".join(lines).strip()
 
 
 # ---------- 한 번 처리 ----------
