@@ -47,7 +47,7 @@ PDF에 없는 과목별 학년·학점·강의 시간은 추측하지 않으며,
 
 ## 주요 파일
 
-- `app/components/`: 화면 컴포넌트
+- `app/components/`: 화면 컴포넌트 (`finder-app.tsx` 전체 화면, `timetable-results.tsx` 후보 시간표, `timetable-chat.tsx` AI 에이전트 채팅, `school-import-panel.tsx` 학교 불러오기, `school-diagnosis-card.tsx` 졸업 현황 카드)
 - `app/lib/`: 과목, 졸업요건, 선후수 관계, 학생 구분 데이터, 백엔드 호출(`api.ts`, `knu-import.ts`), 졸업자가진단 해석(`school-diagnosis.ts`)
 - `app/globals.css`: 화면 스타일
 - `public/documents/`: 사용자가 제공한 학업 안내 PDF 원문
